@@ -1,0 +1,11 @@
+[package]
+name = "fitreader"
+version = "0.1.0"
+authors = ["Richard Brodie <richard@radagast.nu>"]
+edition = "2018"
+
+[dependencies]
+
+[[bin]]
+name = "run-fit"
+path = "src/bin.rs"
