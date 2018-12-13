@@ -1,7 +1,7 @@
 use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
-use super::consts::*;
-use super::reader::{Endian, Reader};
+use crate::consts::*;
+use crate::reader::{Endian, Reader};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;
@@ -25,17 +25,26 @@ impl DefinitionRecord {
             Ok(0) => Endian::Little,
             _ => panic!("some error"),
         };
-        let global_message_num = reader.u16(&endian);
+        let global_message_num = reader.u16(&endian).unwrap();
+        let msg_name = fit::message_name(&global_message_num);
+        // if let Some(msg) = msg_name {
+        //     println!("{}", msg);
+        // }
         let number_of_fields = reader.byte().unwrap();
         let mut field_defs = Vec::with_capacity(number_of_fields as usize);
         for i in 0..number_of_fields {
             let mut buf = reader.bytes(3).unwrap();
             let field = FieldDefinition::new(&buf);
+            // if let Some(msg) = msg_name {
+            //     if let Some(field_name) = fit::get_field(&msg, &field.field_def_number) {
+            //         println!("  {}", field_name.name);
+            //     }
+            // }
             field_defs.push(field);
         }
         DefinitionRecord {
             architecture: endian,
-            global_message_num: global_message_num.unwrap(),
+            global_message_num: global_message_num,
             number_of_fields: number_of_fields,
             field_defs: field_defs,
             dev_field_defs: Vec::new(),
@@ -45,7 +54,7 @@ impl DefinitionRecord {
 
 #[derive(Debug)]
 pub struct FieldDefinition {
-    pub field_def_number: u8,
+    pub field_def_number: u16,
     pub size: u8,
     endianness: bool,
     pub base_type: BaseType,
@@ -55,7 +64,7 @@ impl FieldDefinition {
         let base_num = buf[2] & FIELD_DEFINITION_BASE_NUMBER;
         let endianness = (buf[2] & FIELD_DEFINITION_ARCHITECTURE) == FIELD_DEFINITION_ARCHITECTURE;
         return Self {
-            field_def_number: buf[0],
+            field_def_number: buf[0].into(),
             size: buf[1],
             endianness: endianness,
             base_type: BaseType::get(base_num),

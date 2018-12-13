@@ -5,7 +5,4 @@ authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
 
 [dependencies]
-
-[[bin]]
-name = "run-fit"
-path = "src/bin.rs"
+fit = "^0.1"

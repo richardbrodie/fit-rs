@@ -1,8 +1,8 @@
 use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
-use super::consts::*;
 use super::definition_record::{BaseType, DefinitionRecord, FieldDefinition};
-use super::reader::{Endian, Reader};
+use crate::consts::*;
+use crate::reader::{Endian, Reader};
 
 #[derive(Debug)]
 pub struct DataRecord {
@@ -14,6 +14,7 @@ impl DataRecord {
         let mut fields = Vec::with_capacity(definition.number_of_fields as usize);
         for fd in &definition.field_defs {
             let data_field = DataField::new(reader, &definition.architecture, &fd);
+            println!("{:?}", data_field);
             fields.push(data_field);
         }
         Self {
@@ -25,7 +26,7 @@ impl DataRecord {
 
 #[derive(Debug)]
 pub struct DataField {
-    pub id: u8,
+    pub id: u16,
     pub values: Vec<Value>,
 }
 
@@ -332,6 +333,23 @@ impl Value {
         match self {
             Value::F64(v) => Some(*v),
             _ => None,
+        }
+    }
+}
+
+impl From<Value> for u8 {
+    fn from(val: Value) -> Self {
+        match val {
+            Value::U8(v) => v,
+            _ => 0,
+        }
+    }
+}
+impl From<Value> for u16 {
+    fn from(val: Value) -> Self {
+        match val {
+            Value::U16(v) => v,
+            _ => 0,
         }
     }
 }

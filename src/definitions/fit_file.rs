@@ -1,7 +1,7 @@
 use super::data_record::DataRecord;
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
-use super::reader::Reader;
+use crate::reader::Reader;
 use std::collections::HashMap;
 use std::io::Error;
 use std::path::PathBuf;
@@ -37,12 +37,12 @@ impl HeaderByte {
     }
 }
 
-pub struct Fit {
+pub struct FitFile {
     file_header: FileHeader,
     definitions: HashMap<u8, DefinitionRecord>,
 }
-impl Fit {
-    pub fn read_file(path: PathBuf) {
+impl FitFile {
+    pub fn read(path: PathBuf) {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
         let mut records: Vec<DataRecord> = Vec::new();
@@ -58,7 +58,15 @@ impl Fit {
                 match definitions.get(&h.local_msg_number()) {
                     Some(def) => {
                         let data = DataRecord::new(&mut reader, &def);
-                        records.push(data);
+                        match fit::message_name(&def.global_message_num) {
+                            Some(m) => {
+                                //println!("{}", m),
+                            }
+                            None => {
+                                // println!("::no message found for {}::", &def.global_message_num)
+                            }
+                        };
+                        // records.push(data);
                     }
                     None => {
                         println!(
@@ -72,21 +80,6 @@ impl Fit {
             }
         }
     }
-
-    // fn next_record(
-    //     reader: &mut Reader,
-    //     definitions: &mut HashMap<u8, DefinitionRecord>,
-    // ) -> Result<RecordType, std::io::Error> {
-    //     let h = HeaderByte::new(reader).unwrap();
-    //     if h.is_definition() {
-    //         let definition = DefinitionRecord::new(reader, h.has_developer_fields());
-    //         Ok(RecordType::Definition(definition))
-    //     } else {
-    //         let definition: DefinitionRecord;
-    //         let data = DataRecord::new(reader, &definition);
-    //         Ok(RecordType::Data(data))
-    //     }
-    // }
 }
 
 enum RecordType {
@@ -113,6 +106,6 @@ mod tests {
     fn it_reads_whole_file() {
         let mut reader = fit_setup();
         let filepath = PathBuf::from("fits/working_garmin.fit");
-        let fit = Fit::read_file(filepath);
+        let fit = FitFile::read(filepath);
     }
 }

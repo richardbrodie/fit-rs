@@ -1,4 +1,4 @@
-use super::reader::{Endian, Reader};
+use crate::reader::{Endian, Reader};
 use std::io::Error;
 
 #[derive(Debug)]
