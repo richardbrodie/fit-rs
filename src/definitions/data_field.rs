@@ -1,33 +1,12 @@
-use fit::Value;
-use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
-
-use super::definition_record::{BaseType, DefinitionRecord, FieldDefinition};
+use super::definition_record::FieldDefinition;
 use crate::consts::*;
 use crate::reader::{Endian, Reader};
-
-#[derive(Debug)]
-pub struct DataRecord {
-    pub global_message_num: u16,
-    pub fields: Vec<DataField>,
-}
-impl DataRecord {
-    pub fn new(reader: &mut Reader, definition: &DefinitionRecord) -> Self {
-        let mut fields = Vec::with_capacity(definition.number_of_fields as usize);
-        for fd in &definition.field_defs {
-            let data_field = DataField::new(reader, &definition.architecture, &fd);
-            fields.push(data_field);
-        }
-        Self {
-            global_message_num: definition.global_message_num,
-            fields: fields,
-        }
-    }
-}
+use fit::Value;
 
 #[derive(Debug)]
 pub struct DataField {
     pub id: u16,
-    pub values: Vec<Value>,
+    pub values: Option<Vec<Value>>,
 }
 
 impl DataField {
@@ -214,7 +193,10 @@ impl DataField {
 
         Self {
             id: field_def.field_def_number,
-            values: vals,
+            values: match vals.is_empty() {
+                true => None,
+                false => Some(vals),
+            },
         }
     }
 }
@@ -233,37 +215,50 @@ where
     T: FnMut() -> Option<Value>,
 {
     let number_of_values = (field_size / type_size) as usize;
-    let mut v: Vec<Value> = Vec::with_capacity(number_of_values);
-    for _ in 0..number_of_values {
-        match fun() {
-            Some(val) => v.push(val),
-            _ => (),
-        }
-    }
-    v
+    (0..number_of_values).filter_map(|_| fun()).collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tests::*;
-
-    #[test]
-    fn it_reads_a_data_record() {
-        let mut reader = fit_setup();
-        reader.skip(14); // FileHeader
-        reader.skip(1); // HeaderByte
-        let definition = DefinitionRecord::new(&mut reader, false);
-        reader.skip(1); // HeaderByte
-        let data = DataRecord::new(&mut reader, &definition);
-        assert_eq!(data.fields[0].values[0], Value::U32(3902378567)); // base type 12
-        assert_eq!(data.fields[1].values[0], Value::U32(849790468));
-        assert_eq!(data.fields[3].values[0], Value::U16(1));
-        assert_eq!(
-            fit::get_message_struct(&definition.global_message_num)
-                .unwrap()
-                .msg_name(),
-            "File Id"
-        );
+#[derive(Debug)]
+pub enum BaseType {
+    ENUM,
+    SINT8,
+    UINT8,
+    SINT16,
+    UINT16,
+    SINT32,
+    UINT32,
+    STRING,
+    FLOAT32,
+    FLOAT64,
+    UINT8Z,
+    UINT16Z,
+    UINT32Z,
+    BYTE,
+    SINT64,
+    UINT64,
+    UINT64Z,
+}
+impl BaseType {
+    pub fn get(num: u8) -> Self {
+        match num {
+            0 => BaseType::ENUM,
+            1 => BaseType::SINT8,
+            2 => BaseType::UINT8,
+            3 => BaseType::SINT16,
+            4 => BaseType::UINT16,
+            5 => BaseType::SINT32,
+            6 => BaseType::UINT32,
+            7 => BaseType::STRING,
+            8 => BaseType::FLOAT32,
+            9 => BaseType::FLOAT64,
+            10 => BaseType::UINT8Z,
+            11 => BaseType::UINT16Z,
+            12 => BaseType::UINT32Z,
+            13 => BaseType::BYTE,
+            14 => BaseType::SINT64,
+            15 => BaseType::UINT64,
+            16 => BaseType::UINT64Z,
+            _ => panic!("not an option"),
+        }
     }
 }

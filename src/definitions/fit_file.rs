@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::path::PathBuf;
 
-use super::data_record::DataRecord;
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
 use crate::reader::Reader;
@@ -46,7 +45,6 @@ impl FitFile {
     pub fn read(path: PathBuf) {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        let mut records: Vec<DataRecord> = Vec::new();
 
         let header = FileHeader::new(&mut reader).unwrap();
 
@@ -58,16 +56,7 @@ impl FitFile {
             } else {
                 match definitions.get(&h.local_msg_number()) {
                     Some(def) => {
-                        let data = DataRecord::new(&mut reader, &def);
-                        // match fit::message_name(&def.global_message_num) {
-                        //     Some(m) => {
-                        //         println!("::{:?}", m);
-                        //     }
-                        //     None => {
-                        //         println!("::no message found for {:?}::", &def.global_message_num);
-                        //     }
-                        // };
-                        // records.push(data);
+                        let record = def.new_record(&mut reader);
                     }
                     None => {
                         println!(
@@ -81,11 +70,6 @@ impl FitFile {
             }
         }
     }
-}
-
-enum RecordType {
-    Definition(DefinitionRecord),
-    Data(DataRecord),
 }
 
 #[cfg(test)]

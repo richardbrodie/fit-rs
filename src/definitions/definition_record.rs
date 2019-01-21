@@ -1,6 +1,7 @@
 use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
 use crate::consts::*;
+use crate::definitions::{BaseType, DataField};
 use crate::reader::{Endian, Reader};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
@@ -26,20 +27,11 @@ impl DefinitionRecord {
             _ => panic!("some error"),
         };
         let global_message_num = reader.u16(&endian).unwrap();
-        let record = fit::new_record(&global_message_num);
-        if let Some(r) = record {
-            println!("{}", r.name());
-        }
         let number_of_fields = reader.byte().unwrap();
         let mut field_defs = Vec::with_capacity(number_of_fields as usize);
         for i in 0..number_of_fields {
             let mut buf = reader.bytes(3).unwrap();
             let field = FieldDefinition::new(&buf);
-            // if let Some(msg) = msg_name {
-            //     if let Some(field_name) = fit::get_field(&msg, &field.field_def_number) {
-            //         println!("  {}", field_name.name);
-            //     }
-            // }
             field_defs.push(field);
         }
         DefinitionRecord {
@@ -49,6 +41,18 @@ impl DefinitionRecord {
             field_defs: field_defs,
             dev_field_defs: Vec::new(),
         }
+    }
+    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<impl fit::MessageType + ?Sized>> {
+        fit::new_record(&self.global_message_num).and_then(move |mut record| {
+            for fd in &self.field_defs {
+                let data_field = DataField::new(reader, &self.architecture, &fd);
+                // match data_field.values {
+                //     Some(vals) => record.add_value(data_field.id, vals[0]),
+                //     None => (),
+                // };
+            }
+            Some(record)
+        })
     }
 }
 
@@ -69,51 +73,6 @@ impl FieldDefinition {
             endianness: endianness,
             base_type: BaseType::get(base_num),
         };
-    }
-}
-
-#[derive(Debug)]
-pub enum BaseType {
-    ENUM,
-    SINT8,
-    UINT8,
-    SINT16,
-    UINT16,
-    SINT32,
-    UINT32,
-    STRING,
-    FLOAT32,
-    FLOAT64,
-    UINT8Z,
-    UINT16Z,
-    UINT32Z,
-    BYTE,
-    SINT64,
-    UINT64,
-    UINT64Z,
-}
-impl BaseType {
-    fn get(num: u8) -> Self {
-        match num {
-            0 => BaseType::ENUM,
-            1 => BaseType::SINT8,
-            2 => BaseType::UINT8,
-            3 => BaseType::SINT16,
-            4 => BaseType::UINT16,
-            5 => BaseType::SINT32,
-            6 => BaseType::UINT32,
-            7 => BaseType::STRING,
-            8 => BaseType::FLOAT32,
-            9 => BaseType::FLOAT64,
-            10 => BaseType::UINT8Z,
-            11 => BaseType::UINT16Z,
-            12 => BaseType::UINT32Z,
-            13 => BaseType::BYTE,
-            14 => BaseType::SINT64,
-            15 => BaseType::UINT64,
-            16 => BaseType::UINT64Z,
-            _ => panic!("not an option"),
-        }
     }
 }
 
