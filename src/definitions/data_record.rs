@@ -1,3 +1,4 @@
+use fit::Value;
 use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
 use super::definition_record::{BaseType, DefinitionRecord, FieldDefinition};
@@ -14,7 +15,7 @@ impl DataRecord {
         let mut fields = Vec::with_capacity(definition.number_of_fields as usize);
         for fd in &definition.field_defs {
             let data_field = DataField::new(reader, &definition.architecture, &fd);
-            println!("{:?}", data_field);
+            // println!("{:?}", data_field);
             fields.push(data_field);
         }
         Self {
@@ -219,141 +220,6 @@ impl DataField {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Value {
-    Enum(u8),
-    Str(String),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-}
-
-impl Value {
-    fn is_str(&self) -> bool {
-        self.str().is_some()
-    }
-    fn str(&self) -> Option<String> {
-        match self {
-            Value::Str(s) => Some(s.to_string()),
-            _ => None,
-        }
-    }
-    fn is_u8(&self) -> bool {
-        self.u8().is_some()
-    }
-    fn u8(&self) -> Option<u8> {
-        match self {
-            Value::U8(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_u16(&self) -> bool {
-        self.u16().is_some()
-    }
-    fn u16(&self) -> Option<u16> {
-        match self {
-            Value::U16(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_u32(&self) -> bool {
-        self.u32().is_some()
-    }
-    fn u32(&self) -> Option<u32> {
-        match self {
-            Value::U32(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_u64(&self) -> bool {
-        self.u64().is_some()
-    }
-    fn u64(&self) -> Option<u64> {
-        match self {
-            Value::U64(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_i8(&self) -> bool {
-        self.i8().is_some()
-    }
-    fn i8(&self) -> Option<i8> {
-        match self {
-            Value::I8(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_i16(&self) -> bool {
-        self.i16().is_some()
-    }
-    fn i16(&self) -> Option<i16> {
-        match self {
-            Value::I16(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_i32(&self) -> bool {
-        self.i32().is_some()
-    }
-    fn i32(&self) -> Option<i32> {
-        match self {
-            Value::I32(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_i64(&self) -> bool {
-        self.i64().is_some()
-    }
-    fn i64(&self) -> Option<i64> {
-        match self {
-            Value::I64(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_f32(&self) -> bool {
-        self.f32().is_some()
-    }
-    fn f32(&self) -> Option<f32> {
-        match self {
-            Value::F32(v) => Some(*v),
-            _ => None,
-        }
-    }
-    fn is_f64(&self) -> bool {
-        self.f64().is_some()
-    }
-    fn f64(&self) -> Option<f64> {
-        match self {
-            Value::F64(v) => Some(*v),
-            _ => None,
-        }
-    }
-}
-
-impl From<Value> for u8 {
-    fn from(val: Value) -> Self {
-        match val {
-            Value::U8(v) => v,
-            _ => 0,
-        }
-    }
-}
-impl From<Value> for u16 {
-    fn from(val: Value) -> Self {
-        match val {
-            Value::U16(v) => v,
-            _ => 0,
-        }
-    }
-}
-
 // private
 
 fn is_valid<T: PartialEq>(val: T, invalid: T) -> Option<T> {
@@ -394,5 +260,11 @@ mod tests {
         assert_eq!(data.fields[0].values[0], Value::U32(3902378567)); // base type 12
         assert_eq!(data.fields[1].values[0], Value::U32(849790468));
         assert_eq!(data.fields[3].values[0], Value::U16(1));
+        assert_eq!(
+            fit::get_message_struct(&definition.global_message_num)
+                .unwrap()
+                .msg_name(),
+            "File Id"
+        );
     }
 }

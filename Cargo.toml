@@ -1,8 +1,9 @@
 [package]
 name = "fitreader"
 version = "0.1.0"
+license = "MIT"
 authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
 
 [dependencies]
-fit = "^0.1"
+fit = { path = "../fit-rs" }

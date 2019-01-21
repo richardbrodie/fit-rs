@@ -1,10 +1,11 @@
+use std::collections::HashMap;
+use std::io::Error;
+use std::path::PathBuf;
+
 use super::data_record::DataRecord;
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
 use crate::reader::Reader;
-use std::collections::HashMap;
-use std::io::Error;
-use std::path::PathBuf;
 
 const TIMESTAMP_HEADER_MASK: u8 = 0x80;
 const TIMESTAMP_MESSAGE_TYPE_MASK: u8 = 0x60;
@@ -58,14 +59,14 @@ impl FitFile {
                 match definitions.get(&h.local_msg_number()) {
                     Some(def) => {
                         let data = DataRecord::new(&mut reader, &def);
-                        match fit::message_name(&def.global_message_num) {
-                            Some(m) => {
-                                //println!("{}", m),
-                            }
-                            None => {
-                                // println!("::no message found for {}::", &def.global_message_num)
-                            }
-                        };
+                        // match fit::message_name(&def.global_message_num) {
+                        //     Some(m) => {
+                        //         println!("::{:?}", m);
+                        //     }
+                        //     None => {
+                        //         println!("::no message found for {:?}::", &def.global_message_num);
+                        //     }
+                        // };
                         // records.push(data);
                     }
                     None => {

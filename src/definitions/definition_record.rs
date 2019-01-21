@@ -26,10 +26,10 @@ impl DefinitionRecord {
             _ => panic!("some error"),
         };
         let global_message_num = reader.u16(&endian).unwrap();
-        let msg_name = fit::message_name(&global_message_num);
-        // if let Some(msg) = msg_name {
-        //     println!("{}", msg);
-        // }
+        let record = fit::new_record(&global_message_num);
+        if let Some(r) = record {
+            println!("{}", r.name());
+        }
         let number_of_fields = reader.byte().unwrap();
         let mut field_defs = Vec::with_capacity(number_of_fields as usize);
         for i in 0..number_of_fields {
