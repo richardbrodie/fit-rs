@@ -43,16 +43,17 @@ impl DefinitionRecord {
         }
     }
     pub fn new_record(&self, reader: &mut Reader) -> Option<Box<impl fit::MessageType + ?Sized>> {
-        fit::new_record(&self.global_message_num).and_then(move |mut record| {
-            for fd in &self.field_defs {
-                let data_field = DataField::new(reader, &self.architecture, &fd);
-                // match data_field.values {
-                //     Some(vals) => record.add_value(data_field.id, vals[0]),
-                //     None => (),
-                // };
+        let mut record = fit::new_record(&self.global_message_num);
+        for fd in &self.field_defs {
+            let data_field = DataField::new(reader, &self.architecture, &fd);
+            if let Some(vals) = data_field.values {
+                match &mut record {
+                    Some(r) => r.add_value(data_field.id, vals[0].clone()),
+                    None => (),
+                }
             }
-            Some(record)
-        })
+        }
+        record
     }
 }
 
