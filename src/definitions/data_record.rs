@@ -12,11 +12,10 @@ pub struct DataRecord {
 }
 impl DataRecord {
     pub fn new(reader: &mut Reader, definition: &DefinitionRecord) -> Self {
-        let mut fields = Vec::with_capacity(definition.number_of_fields as usize);
-        for fd in &definition.field_defs {
-            let data_field = DataField::new(reader, &definition.architecture, &fd);
-            fields.push(data_field);
-        }
+        let fields = &definition
+            .field_defs
+            .map(|fd| DataField::new(reader, &definition.architecture, &fd))
+            .collect();
         Self {
             global_message_num: definition.global_message_num,
             fields: fields,

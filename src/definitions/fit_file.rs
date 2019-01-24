@@ -1,3 +1,6 @@
+use fit::MessageType;
+use fit::TryFrom;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::io::Error;
 use std::path::PathBuf;
@@ -45,27 +48,31 @@ impl FitFile {
     pub fn read(path: PathBuf) {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
+        // let mut records: Vec<dyn fit::MessageType> = Vec::new();
 
         let header = FileHeader::new(&mut reader).unwrap();
 
         while reader.pos().unwrap() < u64::from(header.file_length()) {
-            let h = HeaderByte::new(&mut reader).unwrap();
-            if h.is_definition() {
-                let definition = DefinitionRecord::new(&mut reader, h.has_developer_fields());
-                definitions.insert(h.local_msg_number(), definition);
-            } else {
-                match definitions.get(&h.local_msg_number()) {
-                    Some(def) => {
-                        let record = def.new_record(&mut reader);
+            if let Ok(h) = HeaderByte::new(&mut reader) {
+                match h.is_definition() {
+                    true => {
+                        let definition =
+                            DefinitionRecord::new(&mut reader, h.has_developer_fields());
+                        definitions.insert(h.local_msg_number(), definition);
                     }
-                    None => {
-                        println!(
-                            "keys found: {:?}, key wanted: {}",
-                            definitions.keys(),
-                            &h.local_msg_number()
-                        );
-                        panic!("could not find definition");
-                    }
+                    false => match definitions.get(&h.local_msg_number()) {
+                        Some(def) => match def.new_record(&mut reader) {
+                            Some(record) => {
+                                if let Some(v) = record.get_value(253) {
+                                    println!("{:?}", u32::try_from(v));
+                                }
+                            }
+                            None => debug!(":: no record found for {}", def.global_message_num),
+                        },
+                        None => {
+                            panic!("could not find definition for {}", &h.local_msg_number());
+                        }
+                    },
                 }
             }
         }

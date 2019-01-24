@@ -6,4 +6,5 @@ authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
 
 [dependencies]
+log = "0.4"
 fit = { path = "../fit-rs" }
