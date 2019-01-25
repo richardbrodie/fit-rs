@@ -24,7 +24,7 @@ impl DefinitionRecord {
         let endian = match reader.byte() {
             Ok(1) => Endian::Big,
             Ok(0) => Endian::Little,
-            _ => panic!("some error"),
+            _ => panic!("Error when trying to read endianness: value was not 1 or 0"),
         };
         let global_message_num = reader.u16(&endian).unwrap();
         let number_of_fields = reader.byte().unwrap();

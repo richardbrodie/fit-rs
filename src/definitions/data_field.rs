@@ -29,7 +29,7 @@ impl DataField {
                         .byte()
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u8))
-                        .map(|val| Value::U8(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT8 => {
@@ -39,7 +39,7 @@ impl DataField {
                         .byte()
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u8))
-                        .map(|val| Value::U8(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT16 => {
@@ -49,7 +49,7 @@ impl DataField {
                         .u16(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u16))
-                        .map(|val| Value::U16(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT32 => {
@@ -59,7 +59,7 @@ impl DataField {
                         .u32(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u32))
-                        .map(|val| Value::U32(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT64 => {
@@ -69,7 +69,7 @@ impl DataField {
                         .u64(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue))
-                        .map(|val| Value::U64(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::SINT8 => {
@@ -79,7 +79,7 @@ impl DataField {
                         .i8()
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as i8))
-                        .map(|val| Value::I8(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::SINT16 => {
@@ -89,7 +89,7 @@ impl DataField {
                         .i16(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as i16))
-                        .map(|val| Value::I16(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::SINT32 => {
@@ -99,7 +99,7 @@ impl DataField {
                         .i32(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as i32))
-                        .map(|val| Value::I32(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::SINT64 => {
@@ -109,7 +109,7 @@ impl DataField {
                         .i64(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as i64))
-                        .map(|val| Value::I64(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::FLOAT32 => {
@@ -119,7 +119,7 @@ impl DataField {
                         .f32(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as f32))
-                        .map(|val| Value::F32(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::FLOAT64 => {
@@ -129,13 +129,13 @@ impl DataField {
                         .f64(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as f64))
-                        .map(|val| Value::F64(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::STRING => {
                 let typedef = &STRING_TYPE;
                 let number_of_values = field_def.size / typedef.byte_size;
-                let str_vec = (0..number_of_values)
+                let str_vec: Vec<u8> = (0..number_of_values)
                     .into_iter()
                     .filter_map(|_| {
                         reader
@@ -144,9 +144,9 @@ impl DataField {
                             .and_then(|v| is_valid(v, typedef.invalidvalue as u8))
                     })
                     .collect();
-                String::from_utf8(str_vec)
-                    .iter()
-                    .map(|s| Value::Str(s.to_string()))
+                std::str::from_utf8(&str_vec)
+                    .into_iter()
+                    .map(|s| s.into())
                     .collect()
             }
             BaseType::UINT8Z => {
@@ -156,7 +156,7 @@ impl DataField {
                         .byte()
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u8))
-                        .map(|val| Value::U8(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT16Z => {
@@ -166,7 +166,7 @@ impl DataField {
                         .u16(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u16))
-                        .map(|val| Value::U16(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT32Z => {
@@ -176,7 +176,7 @@ impl DataField {
                         .u32(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue as u32))
-                        .map(|val| Value::U32(val))
+                        .map(|val| val.into())
                 })
             }
             BaseType::UINT64Z => {
@@ -186,7 +186,7 @@ impl DataField {
                         .u64(endianness)
                         .ok()
                         .and_then(|v| is_valid(v, typedef.invalidvalue))
-                        .map(|val| Value::U64(val))
+                        .map(|val| val.into())
                 })
             }
         };
@@ -204,7 +204,7 @@ impl DataField {
 // private
 
 fn is_valid<T: PartialEq>(val: T, invalid: T) -> Option<T> {
-    match val == (invalid as T) {
+    match val == invalid {
         true => None,
         false => Some(val),
     }

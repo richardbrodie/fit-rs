@@ -64,7 +64,7 @@ impl FitFile {
                         Some(def) => match def.new_record(&mut reader) {
                             Some(record) => {
                                 if let Some(v) = record.get_value(253) {
-                                    println!("{:?}", u32::try_from(v));
+                                    // println!("{:?}", u32::try_from(v));
                                 }
                             }
                             None => debug!(":: no record found for {}", def.global_message_num),
