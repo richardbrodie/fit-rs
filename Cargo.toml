@@ -1,0 +1,17 @@
+[package]
+name = "fit"
+version = "0.1.0"
+license = "MIT"
+authors = ["Richard Brodie <richard@radagast.nu>"]
+edition = "2018"
+documentation = "https://docs.rs/fit"
+repository = "https://github.com/richardbrodie/fit-rs"
+build = "build.rs"
+
+[dependencies]
+log = "0.4"
+
+[build-dependencies]
+heck = ""
+csv = "^1.0.5"
+
