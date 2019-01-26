@@ -1,8 +1,10 @@
-use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
+use super::base_type::BaseType;
+use super::consts::*;
+use super::data_field::DataField;
 
-use crate::consts::*;
-use crate::definitions::{BaseType, DataField};
-use crate::reader::{Endian, Reader};
+use crate::{new_record, Endian, MessageType, Reader};
+
+use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;
@@ -42,8 +44,8 @@ impl DefinitionRecord {
             dev_field_defs: Vec::new(),
         }
     }
-    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<impl fit::MessageType + ?Sized>> {
-        let mut record = fit::new_record(&self.global_message_num);
+    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<impl MessageType + ?Sized>> {
+        let mut record = new_record(&self.global_message_num);
         for fd in &self.field_defs {
             let data_field = DataField::new(reader, &self.architecture, &fd);
             if let Some(vals) = data_field.values {

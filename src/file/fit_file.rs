@@ -1,13 +1,12 @@
-use fit::MessageType;
-use fit::TryFrom;
+use super::definition_record::DefinitionRecord;
+use super::file_header::FileHeader;
+
+use crate::{MessageType, Reader, TryFrom};
+
 use log::{debug, info};
 use std::collections::HashMap;
 use std::io::Error;
 use std::path::PathBuf;
-
-use super::definition_record::DefinitionRecord;
-use super::file_header::FileHeader;
-use crate::reader::Reader;
 
 const TIMESTAMP_HEADER_MASK: u8 = 0x80;
 const TIMESTAMP_MESSAGE_TYPE_MASK: u8 = 0x60;
@@ -17,10 +16,10 @@ const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
 #[derive(Debug)]
-struct HeaderByte {
+struct RecordHeaderByte {
     byte: u8,
 }
-impl HeaderByte {
+impl RecordHeaderByte {
     fn new(reader: &mut Reader) -> Result<Self, Error> {
         Ok(Self {
             byte: reader.byte()?,
@@ -42,7 +41,6 @@ impl HeaderByte {
 
 pub struct FitFile {
     file_header: FileHeader,
-    definitions: HashMap<u8, DefinitionRecord>,
 }
 impl FitFile {
     pub fn read(path: PathBuf) {
@@ -63,9 +61,8 @@ impl FitFile {
                     false => match definitions.get(&h.local_msg_number()) {
                         Some(def) => match def.new_record(&mut reader) {
                             Some(record) => {
-                                if let Some(v) = record.get_value(253) {
-                                    // println!("{:?}", u32::try_from(v));
-                                }
+                                dbg!(record.name());
+                                dbg!(record.get_field(253));
                             }
                             None => debug!(":: no record found for {}", def.global_message_num),
                         },
