@@ -1,5 +1,6 @@
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
+use super::RecordHeaderByte;
 
 use crate::{MessageType, Reader, TryFrom};
 
@@ -15,86 +16,49 @@ const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
-#[derive(Debug)]
-struct RecordHeaderByte {
-    byte: u8,
-}
-impl RecordHeaderByte {
-    fn new(reader: &mut Reader) -> Result<Self, Error> {
-        Ok(Self {
-            byte: reader.byte()?,
-        })
-    }
-    fn is_timestamp(&self) -> bool {
-        (self.byte & TIMESTAMP_HEADER_MASK) == TIMESTAMP_HEADER_MASK
-    }
-    fn is_definition(&self) -> bool {
-        (self.byte & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK
-    }
-    fn has_developer_fields(&self) -> bool {
-        (self.byte & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK
-    }
-    fn local_msg_number(&self) -> u8 {
-        self.byte & LOCAL_MESSAGE_NUMBER_MASK
-    }
-}
-
 pub struct FitFile {
-    file_header: FileHeader,
+    pub file_header: FileHeader,
+    pub records: Vec<Box<dyn MessageType>>,
 }
 impl FitFile {
-    pub fn read(path: PathBuf) {
+    pub fn read(path: PathBuf) -> FitFile {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        // let mut records: Vec<dyn fit::MessageType> = Vec::new();
+        let mut records: Vec<Box<dyn MessageType>> = Vec::new();
 
         let header = FileHeader::new(&mut reader).unwrap();
 
         while reader.pos().unwrap() < u64::from(header.file_length()) {
-            if let Ok(h) = HeaderByte::new(&mut reader) {
-                match h.is_definition() {
-                    true => {
-                        let definition =
-                            DefinitionRecord::new(&mut reader, h.has_developer_fields());
-                        definitions.insert(h.local_msg_number(), definition);
-                    }
-                    false => match definitions.get(&h.local_msg_number()) {
-                        Some(def) => match def.new_record(&mut reader) {
+            RecordHeaderByte::new(&mut reader).map(|h| {
+                if h.is_definition() {
+                    definitions.insert(
+                        h.local_msg_number(),
+                        DefinitionRecord::new(&mut reader, h.has_developer_fields()),
+                    );
+                } else {
+                    definitions
+                        .get(&h.local_msg_number())
+                        .map(|def| match def.new_record(&mut reader) {
                             Some(record) => {
-                                dbg!(record.name());
-                                dbg!(record.get_field(253));
+                                // if (&record.name() == &"Record") {
+                                // dbg!(&record.name());
+                                // println!("time: {:?}", &record.get_field(253).unwrap().value);
+                                // println!("lat: {:?}", &record.get_field(0).unwrap().value);
+                                // println!("lon: {:?}", &record.get_field(1).unwrap().value);
+                                // }
+                                records.push(record);
                             }
                             None => debug!(":: no record found for {}", def.global_message_num),
-                        },
-                        None => {
-                            panic!("could not find definition for {}", &h.local_msg_number());
-                        }
-                    },
+                        })
+                        .or_else(|| {
+                            panic!("could not find definition for {}", &h.local_msg_number())
+                        });
                 }
-            }
+            });
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tests::*;
-    use std::fs::File;
-    use std::path::PathBuf;
-
-    #[test]
-    fn it_reads_header_byte() {
-        let mut reader = fit_setup();
-        reader.skip(14); // FileHeader
-        let header_byte = HeaderByte::new(&mut reader).unwrap();
-        assert_eq!(header_byte.is_definition(), true);
-    }
-
-    #[test]
-    fn it_reads_whole_file() {
-        let mut reader = fit_setup();
-        let filepath = PathBuf::from("fits/working_garmin.fit");
-        let fit = FitFile::read(filepath);
+        FitFile {
+            file_header: header,
+            records: records,
+        }
     }
 }

@@ -1,6 +1,7 @@
 #![allow(unused)]
 use std::collections::HashMap;
 use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
+use std::path::PathBuf;
 
 mod file;
 mod messages;
@@ -11,6 +12,10 @@ pub use self::file::FitFile;
 pub use self::messages::{new_record, MessageType};
 pub use self::reader::{Endian, Reader};
 pub use self::value::{TryFrom, Value, ValueError};
+
+pub fn read(path: PathBuf) -> FitFile {
+    file::FitFile::read(path)
+}
 
 #[cfg(test)]
 pub mod tests {

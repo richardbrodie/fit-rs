@@ -15,6 +15,7 @@ pub enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
+    Time(u32),
 }
 impl Mul<f64> for Value {
     type Output = Value;

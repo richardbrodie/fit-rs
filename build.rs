@@ -116,13 +116,13 @@ impl MessageType for {0} {{
     fn name(&self) -> &str {{
         "{1}"
     }}
-    fn insert_value(&mut self, num: u16, val: Value) {{
+    fn write_value(&mut self, num: u16, val: Value) {{
         self.values.insert(num, val);
     }}
     fn get_value(&self, num: u16) -> Option<&Value> {{
         self.values.get(&num)
     }}
-    fn get_fit_field(&self, num: u16) -> Option<&FitField> {{
+    fn get_message_field(&self, num: u16) -> Option<&MessageField> {{
         match num {{
 "#,
                     name.to_camel_case(),
@@ -152,7 +152,7 @@ impl MessageType for {0} {{
                     "{}",
                     format!(
                         r#"            {0} => {{
-                static F: FitField = FitField {{
+                static F: MessageField = MessageField {{
                     num: {0},
                     name: "{1}",
                     kind: "{2}",
@@ -166,7 +166,7 @@ impl MessageType for {0} {{
                         value,
                         &r[3],
                         &r[6].parse::<f64>().ok(),
-                        &r[7].parse::<f64>().ok()
+                        &r[7].parse::<f64>().ok(),
                     )
                 )
                 .unwrap(),

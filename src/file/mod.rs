@@ -3,9 +3,11 @@ mod consts;
 mod data_field;
 mod definition_record;
 mod file_header;
+mod fit_file;
 
 use self::definition_record::DefinitionRecord;
 use self::file_header::FileHeader;
+pub use self::fit_file::FitFile;
 
 use crate::messages::MessageType;
 use crate::{Reader, TryFrom};
@@ -23,10 +25,10 @@ const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
 #[derive(Debug)]
-struct HeaderByte {
+struct RecordHeaderByte {
     byte: u8,
 }
-impl HeaderByte {
+impl RecordHeaderByte {
     fn new(reader: &mut Reader) -> Result<Self, Error> {
         Ok(Self {
             byte: reader.byte()?,
@@ -46,44 +48,6 @@ impl HeaderByte {
     }
 }
 
-pub struct FitFile {
-    file_header: FileHeader,
-    definitions: HashMap<u8, DefinitionRecord>,
-}
-impl FitFile {
-    pub fn read(path: PathBuf) {
-        let mut reader = Reader::new(path);
-        let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        // let mut records: Vec<dyn fit::MessageType> = Vec::new();
-
-        let header = FileHeader::new(&mut reader).unwrap();
-
-        while reader.pos().unwrap() < u64::from(header.file_length()) {
-            if let Ok(h) = HeaderByte::new(&mut reader) {
-                match h.is_definition() {
-                    true => {
-                        let definition =
-                            DefinitionRecord::new(&mut reader, h.has_developer_fields());
-                        definitions.insert(h.local_msg_number(), definition);
-                    }
-                    false => match definitions.get(&h.local_msg_number()) {
-                        Some(def) => match def.new_record(&mut reader) {
-                            Some(record) => {
-                                dbg!(record.name());
-                                dbg!(record.get_field(253));
-                            }
-                            None => debug!(":: no record found for {}", def.global_message_num),
-                        },
-                        None => {
-                            panic!("could not find definition for {}", &h.local_msg_number());
-                        }
-                    },
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,7 +59,7 @@ mod tests {
     fn it_reads_header_byte() {
         let mut reader = fit_setup();
         reader.skip(14); // FileHeader
-        let header_byte = HeaderByte::new(&mut reader).unwrap();
+        let header_byte = RecordHeaderByte::new(&mut reader).unwrap();
         assert_eq!(header_byte.is_definition(), true);
     }
 
@@ -104,5 +68,22 @@ mod tests {
         let mut reader = fit_setup();
         let filepath = PathBuf::from("fits/working_garmin.fit");
         let fit = FitFile::read(filepath);
+    }
+
+    #[test]
+    fn it_reads_fileheader() {
+        let mut reader = fit_setup();
+        let fileheader = FileHeader::new(&mut reader).unwrap();
+        assert_eq!(fileheader.num_record_bytes, 191877);
+    }
+
+    #[test]
+    fn it_reads_a_definition() {
+        let mut reader = fit_setup();
+        reader.skip(14); // FileHeader
+        reader.skip(1); // HeaderByte
+        let definition = DefinitionRecord::new(&mut reader, false);
+        // now 41
+        assert_eq!(definition.number_of_fields, 7);
     }
 }
