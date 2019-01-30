@@ -1,3 +1,4 @@
+use log::error;
 use std::collections::HashMap;
 
 use crate::Value;
@@ -55,25 +56,23 @@ pub trait MessageType {
 
 fn preprocess_value(val: Value, field: &MessageField) -> Result<Value, ()> {
     match field.kind {
+        "string" => Ok(val),
+        "manufacturer" => Ok(val),
+        "device_index" => {
+            println!("device index: {:?}", &val);
+            // println!("device index: {:?}", types::type_value(x, &u16::from(val)));
+            Ok(val)
+        }
+        "battery_status" => Ok(val),
+        "message_index" => Ok(val),
+        "local_date_time" => Ok(val),
+        "localtime_into_day" => Ok(val),
         "date_time" => {
             if let Value::U32(inner) = val {
                 Ok(Value::Time(inner + PSEUDO_EPOCH))
             } else {
                 Err(())
             }
-        }
-        x if !x.starts_with("uint") && !x.starts_with("sint") => {
-            match val {
-                Value::Enum(v) => println!("enum: {:?}", &val),
-                _ => println!("other: {:?}", &val),
-            }
-            // println!(
-            //     "{} {}: {:?}",
-            //     x,
-            //     &field.num,
-            //     types::type_value(x, &field.num)
-            // );
-            Ok(val)
         }
         x if x.ends_with("_lat") || x.ends_with("_long") => {
             if let Value::I32(inner) = val {
@@ -83,6 +82,15 @@ fn preprocess_value(val: Value, field: &MessageField) -> Result<Value, ()> {
                 Err(())
             }
         }
+        x if !x.starts_with("uint") && !x.starts_with("sint") => match val {
+            Value::Enum(v) => types::type_value(x, &(v as u16))
+                .map(|e| e.into())
+                .ok_or(()),
+            _ => {
+                println!("{}: {:?}", x, &val);
+                Err(())
+            }
+        },
         _ => Ok(val.scale(field.scale).offset(field.offset)),
     }
 }
