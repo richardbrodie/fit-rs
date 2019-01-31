@@ -1,7 +1,7 @@
-use log::error;
+use log::warn;
 use std::collections::HashMap;
 
-use crate::Value;
+use crate::value::{TryFrom, Value};
 mod types;
 pub use self::types::{message_name, type_value};
 
@@ -35,10 +35,12 @@ pub trait MessageType {
     where
         Self: Sized;
     fn name(&self) -> &str;
-    fn add_read_value(&mut self, num: u16, val: Value) -> Result<(), ()> {
+    fn add_read_value(&mut self, num: u16, val: Value) {
         match self.get_message_field(num) {
-            Some(field) => preprocess_value(val, field).map(|v| self.write_value(num, v)),
-            None => Err(()),
+            Some(field) => {
+                preprocess_value(val, field).map(|v| self.write_value(num, v));
+            }
+            None => (),
         }
     }
     fn get_field(&self, num: u16) -> Option<Field> {
@@ -54,44 +56,78 @@ pub trait MessageType {
     fn write_value(&mut self, num: u16, val: Value);
 }
 
-fn preprocess_value(val: Value, field: &MessageField) -> Result<Value, ()> {
+fn preprocess_value(val: Value, field: &MessageField) -> Option<Value> {
     match field.kind {
-        "string" => Ok(val),
-        "manufacturer" => Ok(val),
-        "device_index" => {
-            println!("device index: {:?}", &val);
-            // println!("device index: {:?}", types::type_value(x, &u16::from(val)));
-            Ok(val)
+        x if x.starts_with("uint") || x.starts_with("sint") => {
+            Some(val.scale(field.scale).offset(field.offset))
         }
-        "battery_status" => Ok(val),
-        "message_index" => Ok(val),
-        "local_date_time" => Ok(val),
-        "localtime_into_day" => Ok(val),
-        "date_time" => {
-            if let Value::U32(inner) = val {
-                Ok(Value::Time(inner + PSEUDO_EPOCH))
+        "string" => Some(val),
+        "manufacturer" => {
+            if let Value::U16(inner) = val {
+                types::type_value("manufacturer", &inner.into()).map(|s| s.into())
             } else {
-                Err(())
+                warn!("wrong type for manfacturer: {:?}", val);
+                None
             }
         }
+        "date_time" => {
+            if let Value::U32(inner) = val {
+                Some(Value::Time(inner + PSEUDO_EPOCH))
+            } else {
+                warn!("wrong type for timestamp");
+                None
+            }
+        }
+        "device_index" => {
+            if let Value::U8(inner) = val {
+                types::type_value("device_index", &inner.into()).map(|s| s.into())
+            } else {
+                warn!("wrong type for device index: {:?}", val);
+                None
+            }
+        }
+        "battery_status" => {
+            if let Value::U8(inner) = val {
+                types::type_value("battery_status", &inner.into()).map(|s| s.into())
+            } else {
+                warn!("wrong type for battery_status: {:?}", val);
+                None
+            }
+        }
+        "message_index" => {
+            if let Value::U16(inner) = val {
+                types::type_value("message_index", &inner.into()).map(|s| s.into())
+            } else {
+                warn!("wrong type for message_index: {:?}", val);
+                None
+            }
+        }
+        "local_date_time" => {
+            if let Value::U32(inner) = val {
+                Some(Value::Time(inner + PSEUDO_EPOCH - 3600)) // hardcoded to +0100
+            } else {
+                warn!("wrong type for timestamp");
+                None
+            }
+        }
+        "localtime_into_day" => Some(val),
         x if x.ends_with("_lat") || x.ends_with("_long") => {
             if let Value::I32(inner) = val {
                 let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
-                Ok(Value::F32(coord))
+                Some(Value::F32(coord))
             } else {
-                Err(())
+                warn!("wrong type for coordinate");
+                None
             }
         }
-        x if !x.starts_with("uint") && !x.starts_with("sint") => match val {
-            Value::Enum(v) => types::type_value(x, &(v as u16))
-                .map(|e| e.into())
-                .ok_or(()),
-            _ => {
-                println!("{}: {:?}", x, &val);
-                Err(())
+        _ => {
+            if let Value::Enum(inner) = val {
+                types::type_value(field.kind, &inner.into()).map(|e| e.into())
+            } else {
+                warn!("wrong type for `{}`: {:?}", field.kind, &val);
+                None
             }
-        },
-        _ => Ok(val.scale(field.scale).offset(field.offset)),
+        }
     }
 }
 

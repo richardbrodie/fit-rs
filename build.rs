@@ -42,7 +42,7 @@ fn read_types_csv() {
                 &mut out_file,
                 "{}",
                 format!(
-                    "pub fn {}(key: &u16) -> Option<&'static str> {{\n  match key {{\n",
+                    "pub fn {}(key: &u32) -> Option<&'static str> {{\n  match key {{\n",
                     name
                 )
             )
@@ -53,7 +53,7 @@ fn read_types_csv() {
             if r[4].contains("Deprecated") {
                 continue;
             }
-            match parse_u16(&r[3]) {
+            match parse_u32(&r[3]) {
                 Some(key) => {
                     write!(
                         &mut out_file,
@@ -146,7 +146,7 @@ impl MessageType for {0} {{
             if value.contains("Deprecated") {
                 continue;
             }
-            match parse_u16(&r[1]) {
+            match parse_u32(&r[1]) {
                 Some(key) => write!(
                     &mut def_file,
                     "{}",
@@ -186,12 +186,12 @@ impl MessageType for {0} {{
     .unwrap();
 }
 
-fn parse_u16(s: &str) -> Option<u16> {
+fn parse_u32(s: &str) -> Option<u32> {
     const HEX: &'static str = "0x";
     let l = s.to_lowercase();
     if l.starts_with(HEX) {
-        u16::from_str_radix(&l.trim_start_matches(HEX), 16).ok()
+        u32::from_str_radix(&l.trim_start_matches(HEX), 16).ok()
     } else {
-        u16::from_str_radix(&l, 10).ok()
+        u32::from_str_radix(&l, 10).ok()
     }
 }

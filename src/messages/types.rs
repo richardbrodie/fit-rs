@@ -1,9 +1,9 @@
 include!(concat!(env!("OUT_DIR"), "/types.rs"));
 
 pub fn message_name(key: &u16) -> Option<&'static str> {
-    type_value("mesg_num", key)
+    type_value("mesg_num", &(*key as u32))
 }
-pub fn type_value(name: &str, key: &u16) -> Option<&'static str> {
+pub fn type_value(name: &str, key: &u32) -> Option<&'static str> {
     match name {
         "file" => file(key),
         "mesg_num" => mesg_num(key),
