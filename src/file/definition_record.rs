@@ -1,10 +1,6 @@
 use super::base_type::BaseType;
-use super::consts::*;
 use super::data_field::DataField;
-
 use crate::{new_record, Endian, MessageType, Reader};
-
-use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;
@@ -20,7 +16,7 @@ pub struct DefinitionRecord {
 impl DefinitionRecord {
     pub fn new(reader: &mut Reader, dev_fields: bool) -> Self {
         if dev_fields {
-            panic!("has developer fields")
+            panic!("file has developer fields!")
         }
         reader.skip(1); // skip reserved byte
         let endian = match reader.byte() {
@@ -31,8 +27,8 @@ impl DefinitionRecord {
         let global_message_num = reader.u16(&endian).unwrap();
         let number_of_fields = reader.byte().unwrap();
         let mut field_defs = Vec::with_capacity(number_of_fields as usize);
-        for i in 0..number_of_fields {
-            let mut buf = reader.bytes(3).unwrap();
+        for _ in 0..number_of_fields {
+            let buf = reader.bytes(3).unwrap();
             let field = FieldDefinition::new(&buf);
             field_defs.push(field);
         }

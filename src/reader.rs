@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
+use std::io::{BufReader, Error, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -95,22 +95,12 @@ impl Reader {
         }))
     }
     pub fn skip(&mut self, index: i64) {
-        self.inner.seek(SeekFrom::Current(index));
+        match self.inner.seek(SeekFrom::Current(index)) {
+            Ok(_) => (),
+            Err(_) => panic!("could not skip byte"),
+        }
     }
     pub fn pos(&mut self) -> Result<u64, Error> {
         self.inner.seek(SeekFrom::Current(0))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tests::*;
-    use std::fs::File;
-    use std::path::PathBuf;
-
-    #[test]
-    fn it_reads_header_byte() {
-        let t = -5345i32;
     }
 }

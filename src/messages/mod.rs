@@ -1,7 +1,7 @@
 use log::warn;
 use std::collections::HashMap;
 
-use crate::value::{TryFrom, Value};
+use crate::value::Value;
 mod types;
 pub use self::types::{message_name, type_value};
 

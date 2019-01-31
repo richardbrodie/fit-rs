@@ -5,21 +5,13 @@ mod definition_record;
 mod file_header;
 mod fit_file;
 
-use self::definition_record::DefinitionRecord;
-use self::file_header::FileHeader;
 pub use self::fit_file::FitFile;
 
-use crate::messages::MessageType;
-use crate::{Reader, TryFrom};
+use crate::Reader;
 
-use log::{debug, info};
-use std::collections::HashMap;
-use std::io::Error;
-use std::path::PathBuf;
-
-const TIMESTAMP_HEADER_MASK: u8 = 0x80;
-const TIMESTAMP_MESSAGE_TYPE_MASK: u8 = 0x60;
-const TIMESTAMP_OFFSET_MASK: u8 = 0x1F;
+// const TIMESTAMP_HEADER_MASK: u8 = 0x80;
+// const TIMESTAMP_MESSAGE_TYPE_MASK: u8 = 0x60;
+// const TIMESTAMP_OFFSET_MASK: u8 = 0x1F;
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
@@ -29,14 +21,12 @@ struct RecordHeaderByte {
     byte: u8,
 }
 impl RecordHeaderByte {
-    fn new(reader: &mut Reader) -> Result<Self, Error> {
-        Ok(Self {
-            byte: reader.byte()?,
-        })
+    fn new(reader: &mut Reader) -> Result<Self, ()> {
+        reader.byte().map(|b| Self { byte: b }).map_err(|_| ())
     }
-    fn is_timestamp(&self) -> bool {
-        (self.byte & TIMESTAMP_HEADER_MASK) == TIMESTAMP_HEADER_MASK
-    }
+    // fn is_timestamp(&self) -> bool {
+    //     (self.byte & TIMESTAMP_HEADER_MASK) == TIMESTAMP_HEADER_MASK
+    // }
     fn is_definition(&self) -> bool {
         (self.byte & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK
     }
@@ -50,9 +40,10 @@ impl RecordHeaderByte {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::definition_record::DefinitionRecord;
+    use super::file_header::FileHeader;
+    use super::{FitFile, RecordHeaderByte};
     use crate::tests::*;
-    use std::fs::File;
     use std::path::PathBuf;
 
     #[test]
@@ -65,9 +56,8 @@ mod tests {
 
     #[test]
     fn it_reads_whole_file() {
-        let mut reader = fit_setup();
         let filepath = PathBuf::from("fits/working_garmin.fit");
-        let fit = FitFile::read(filepath);
+        let _ = FitFile::read(filepath);
     }
 
     #[test]

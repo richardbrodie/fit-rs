@@ -1,6 +1,4 @@
-#![allow(unused)]
-use std::collections::HashMap;
-use std::io::{BufReader, Error, Read, Seek, SeekFrom, Take};
+// #![allow(unused)]
 use std::path::PathBuf;
 
 mod file;

@@ -38,7 +38,7 @@ impl BaseType {
             14 => BaseType::SINT64,
             15 => BaseType::UINT64,
             16 => BaseType::UINT64Z,
-            _ => panic!("not an option"),
+            _ => panic!("`{}` not a base_type option", num),
         }
     }
 }
