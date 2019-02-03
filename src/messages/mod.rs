@@ -11,12 +11,12 @@ include!(concat!(env!("OUT_DIR"), "/messages.rs"));
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631065600;
 
-pub fn new_record(num: &u16) -> Option<Box<dyn MessageType>> {
+pub fn new_record(num: &u16) -> Option<Box<dyn DefinedMessageType>> {
     message_name(num).and_then(|name| message(name))
 }
 
 #[derive(Debug)]
-pub struct MessageField {
+pub struct DefinedMessageField {
     pub num: u16,
     pub name: &'static str,
     pub kind: &'static str,
@@ -24,39 +24,55 @@ pub struct MessageField {
     pub offset: Option<f64>,
 }
 #[derive(Debug)]
-pub struct Field<'a> {
+pub struct FieldNameAndValue<'a> {
     pub name: &'static str,
     pub value: Option<&'a Value>,
 }
 
-pub trait MessageType {
+pub trait DefinedMessageType {
     // public
     fn new() -> Self
     where
         Self: Sized;
+
     fn name(&self) -> &str;
-    fn add_read_value(&mut self, num: u16, val: Value) {
-        match self.get_message_field(num) {
+
+    fn process_raw_value(&mut self, num: u16, val: Value) {
+        match self.defined_message_field(num) {
             Some(field) => {
-                preprocess_value(val, field).map(|v| self.write_value(num, v));
+                convert_value(val, field).map(|v| self.write_value(num, v));
             }
             None => (),
         }
     }
-    fn get_field(&self, num: u16) -> Option<Field> {
-        self.get_message_field(num).map(|f| Field {
+
+    fn field(&self, num: u16) -> Option<FieldNameAndValue> {
+        self.defined_message_field(num).map(|f| FieldNameAndValue {
             name: f.name,
-            value: self.get_value(num),
+            value: self.read_value(num),
         })
     }
 
+    fn fields(&self) -> Vec<FieldNameAndValue> {
+        self.inner()
+            .iter()
+            .map(|(k, v)| FieldNameAndValue {
+                name: self.defined_message_field(*k).unwrap().name,
+                value: Some(v),
+            })
+            .collect()
+    }
     // internal
-    fn get_message_field(&self, num: u16) -> Option<&MessageField>;
-    fn get_value(&self, num: u16) -> Option<&Value>;
+    fn inner(&self) -> &HashMap<u16, Value>;
+
+    fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField>;
+
+    fn read_value(&self, num: u16) -> Option<&Value>;
+
     fn write_value(&mut self, num: u16, val: Value);
 }
 
-fn preprocess_value(val: Value, field: &MessageField) -> Option<Value> {
+fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
     match field.kind {
         x if x.starts_with("uint") || x.starts_with("sint") => {
             Some(val.scale(field.scale).offset(field.offset))
@@ -152,11 +168,11 @@ mod tests {
         let mut t = message("file_id").unwrap();
         let n = t.name();
         assert_eq!(n, "File Id");
-        let f = t.get_field(0).unwrap();
+        let f = t.defined_message_field(0).unwrap();
         let f_n = f.name;
         assert_eq!(f_n, "type");
         t.write_value(0, Value::U32(12));
-        let v: Option<&Value> = t.get_value(0);
+        let v: Option<&Value> = t.read_value(0);
         assert_eq!(v.unwrap(), &Value::U32(12));
     }
 
@@ -165,9 +181,9 @@ mod tests {
         let mut t = message("device_settings").unwrap();
         let n = t.name();
         assert_eq!(n, "Device Settings");
-        t.add_read_value(5, Value::U32(20));
-        let v: Option<&Value> = t.get_value(5);
-        assert_eq!(v.unwrap(), &Value::U32(80));
+        t.process_raw_value(5, Value::U32(20));
+        let v: Option<&Value> = t.read_value(5);
+        assert_eq!(v.unwrap(), &Value::F64(5.0));
     }
 
     #[test]
@@ -175,8 +191,8 @@ mod tests {
         let mut t = message("gps_metadata").unwrap();
         let n = t.name();
         assert_eq!(n, "Gps Metadata");
-        t.add_read_value(3, Value::U32(5));
-        let v: Option<&Value> = t.get_value(3);
-        assert_eq!(v.unwrap(), &Value::U32(525));
+        t.process_raw_value(3, Value::U32(5000));
+        let v: Option<&Value> = t.read_value(3);
+        assert_eq!(v.unwrap(), &Value::F64(500.0));
     }
 }

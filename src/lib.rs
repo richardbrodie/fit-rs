@@ -7,7 +7,7 @@ mod reader;
 mod value;
 
 pub use self::file::FitFile;
-pub use self::messages::{new_record, MessageType};
+pub use self::messages::{new_record, DefinedMessageType};
 pub use self::reader::{Endian, Reader};
 pub use self::value::{TryFrom, Value, ValueError};
 

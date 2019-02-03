@@ -81,7 +81,7 @@ fn read_messages_csv() {
 
     write!(
         &mut msg_file,
-        "fn message(msg: &str) -> Option<Box<dyn MessageType>> {{\n
+        "fn message(msg: &str) -> Option<Box<dyn DefinedMessageType>> {{\n
             match msg {{\n"
     )
     .unwrap();
@@ -109,9 +109,12 @@ fn read_messages_csv() {
                 format!(
                     r#"#[derive(Debug)]
 pub struct {0} {{ values: HashMap<u16, Value> }}
-impl MessageType for {0} {{
+impl DefinedMessageType for {0} {{
     fn new() -> Self {{
         Self {{ values: HashMap::new() }} 
+    }}
+    fn inner(&self) -> &HashMap<u16, Value> {{
+        &self.values
     }}
     fn name(&self) -> &str {{
         "{1}"
@@ -119,10 +122,10 @@ impl MessageType for {0} {{
     fn write_value(&mut self, num: u16, val: Value) {{
         self.values.insert(num, val);
     }}
-    fn get_value(&self, num: u16) -> Option<&Value> {{
+    fn read_value(&self, num: u16) -> Option<&Value> {{
         self.values.get(&num)
     }}
-    fn get_message_field(&self, num: u16) -> Option<&MessageField> {{
+    fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField> {{
         match num {{
 "#,
                     name.to_camel_case(),
@@ -152,7 +155,7 @@ impl MessageType for {0} {{
                     "{}",
                     format!(
                         r#"            {0} => {{
-                static F: MessageField = MessageField {{
+                static F: DefinedMessageField = DefinedMessageField {{
                     num: {0},
                     name: "{1}",
                     kind: "{2}",

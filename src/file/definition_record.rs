@@ -1,6 +1,6 @@
 use super::base_type::BaseType;
 use super::data_field::DataField;
-use crate::{new_record, Endian, MessageType, Reader};
+use crate::{new_record, DefinedMessageType, Endian, Reader};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;
@@ -40,14 +40,14 @@ impl DefinitionRecord {
             dev_field_defs: Vec::new(),
         }
     }
-    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<dyn MessageType>> {
+    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
         let mut record = new_record(&self.global_message_num);
         for fd in &self.field_defs {
             let data_field = DataField::new(reader, &self.architecture, &fd);
             if let Some(vals) = data_field.values {
                 match &mut record {
                     Some(r) => {
-                        r.add_read_value(data_field.id, vals[0].clone());
+                        r.process_raw_value(data_field.id, vals[0].clone());
                     }
                     None => (),
                 }

@@ -1,21 +1,32 @@
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
 use super::RecordHeaderByte;
-use crate::{MessageType, Reader};
+use crate::{DefinedMessageType, Reader};
 
 use log::warn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+type MessageBox = Box<dyn DefinedMessageType>;
 pub struct FitFile {
-    pub file_header: FileHeader,
-    pub records: Vec<Box<dyn MessageType>>,
+    file_header: FileHeader,
+    records: Vec<MessageBox>,
 }
 impl FitFile {
+    pub fn session(&self) -> Vec<&MessageBox> {
+        self.records
+            .iter()
+            .filter_map(|r| match r.name() {
+                "Session" => Some(r),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn read(path: PathBuf) -> FitFile {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        let mut records: Vec<Box<dyn MessageType>> = Vec::new();
+        let mut records: Vec<MessageBox> = Vec::new();
 
         let header = FileHeader::new(&mut reader).unwrap();
 

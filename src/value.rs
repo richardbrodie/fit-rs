@@ -1,5 +1,4 @@
 #![warn(unstable_name_collisions)]
-use std::ops::{Add, Mul};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -17,101 +16,41 @@ pub enum Value {
     F64(f64),
     Time(u32),
 }
-impl Mul<f64> for Value {
-    type Output = Value;
-    fn mul(self, rhs: f64) -> Value {
-        match self {
-            Value::U8(v) => match v.checked_mul(rhs as u8) {
-                Some(r) => Value::U8(r),
-                None => Value::U16(v as u16) * rhs,
-            },
-            Value::U16(v) => match v.checked_mul(rhs as u16) {
-                Some(r) => Value::U16(r),
-                None => Value::U32(v as u32) * rhs,
-            },
-            Value::U32(v) => match v.checked_mul(rhs as u32) {
-                Some(r) => Value::U32(r),
-                None => Value::U64(v as u64) * rhs,
-            },
-            Value::U64(v) => match v.checked_mul(rhs as u64) {
-                Some(r) => Value::U64(r),
-                None => panic!("can't multiply a u64 by an f64"),
-            },
-            Value::I8(v) => match v.checked_mul(rhs as i8) {
-                Some(r) => Value::I8(r),
-                None => Value::I16(v as i16) * rhs,
-            },
-            Value::I16(v) => match v.checked_mul(rhs as i16) {
-                Some(r) => Value::I16(r),
-                None => Value::I32(v as i32) * rhs,
-            },
-            Value::I32(v) => match v.checked_mul(rhs as i32) {
-                Some(r) => Value::I32(r),
-                None => Value::I64(v as i64) * rhs,
-            },
-            Value::I64(v) => match v.checked_mul(rhs as i64) {
-                Some(r) => Value::I64(r),
-                None => panic!("can't multiply an i64 by an f64"),
-            },
-            Value::F32(v) => Value::F64((v as f64) * rhs),
-            Value::F64(v) => Value::F64(v * rhs),
-            _ => self,
-        }
-    }
-}
-impl Add<f64> for Value {
-    type Output = Value;
-    fn add(self, rhs: f64) -> Value {
-        match self {
-            Value::U8(v) => match v.checked_add(rhs as u8) {
-                Some(r) => Value::U8(r),
-                None => Value::U16(v as u16) + rhs,
-            },
-            Value::U16(v) => match v.checked_add(rhs as u16) {
-                Some(r) => Value::U16(r),
-                None => Value::U32(v as u32) + rhs,
-            },
-            Value::U32(v) => match v.checked_add(rhs as u32) {
-                Some(r) => Value::U32(r),
-                None => Value::U64(v as u64) + rhs,
-            },
-            Value::U64(v) => match v.checked_add(rhs as u64) {
-                Some(r) => Value::U64(r),
-                None => panic!("can't add u64 and f64"),
-            },
-            Value::I8(v) => match v.checked_add(rhs as i8) {
-                Some(r) => Value::I8(r),
-                None => Value::I16(v as i16) + rhs,
-            },
-            Value::I16(v) => match v.checked_add(rhs as i16) {
-                Some(r) => Value::I16(r),
-                None => Value::I32(v as i32) + rhs,
-            },
-            Value::I32(v) => match v.checked_add(rhs as i32) {
-                Some(r) => Value::I32(r),
-                None => Value::I64(v as i64) + rhs,
-            },
-            Value::I64(v) => match v.checked_add(rhs as i64) {
-                Some(r) => Value::I64(r),
-                None => panic!("can't add i64 and f64"),
-            },
-            Value::F32(v) => Value::F64((v as f64) + rhs),
-            Value::F64(v) => Value::F64(v + rhs),
-            _ => self,
-        }
-    }
-}
 
 impl Value {
     pub fn scale(self, s: Option<f64>) -> Self {
         match s {
-            Some(s) => self * s,
+            Some(rhs) => match self {
+                Value::U8(v) => Value::F64(v as f64 / rhs),
+                Value::U16(v) => Value::F64(v as f64 / rhs),
+                Value::U32(v) => Value::F64(v as f64 / rhs),
+                Value::U64(v) => Value::F64(v as f64 / rhs),
+                Value::I8(v) => Value::F64(v as f64 / rhs),
+                Value::I16(v) => Value::F64(v as f64 / rhs),
+                Value::I32(v) => Value::F64(v as f64 / rhs),
+                Value::I64(v) => Value::F64(v as f64 / rhs),
+                Value::F32(v) => Value::F64(v as f64 / rhs),
+                Value::F64(v) => Value::F64(v / rhs),
+                _ => self,
+            },
             None => self,
         }
     }
     pub fn offset(self, o: Option<f64>) -> Self {
         match o {
-            Some(o) => self + o,
+            Some(rhs) => match self {
+                Value::U8(v) => Value::F64(v as f64 - rhs),
+                Value::U16(v) => Value::F64(v as f64 - rhs),
+                Value::U32(v) => Value::F64(v as f64 - rhs),
+                Value::U64(v) => Value::F64(v as f64 - rhs),
+                Value::I8(v) => Value::F64(v as f64 - rhs),
+                Value::I16(v) => Value::F64(v as f64 - rhs),
+                Value::I32(v) => Value::F64(v as f64 - rhs),
+                Value::I64(v) => Value::F64(v as f64 - rhs),
+                Value::F32(v) => Value::F64(v as f64 - rhs),
+                Value::F64(v) => Value::F64(v - rhs),
+                _ => self,
+            },
             None => self,
         }
     }
