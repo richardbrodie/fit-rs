@@ -76,3 +76,19 @@ impl FieldDefinition {
         };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DefinitionRecord;
+    use crate::tests::fit_setup;
+
+    #[test]
+    fn it_reads_a_definition() {
+        let mut reader = fit_setup();
+        reader.skip(14); // FileHeader
+        reader.skip(1); // HeaderByte
+        let definition = DefinitionRecord::new(&mut reader, false);
+        // now 41
+        assert_eq!(definition.number_of_fields, 7);
+    }
+}

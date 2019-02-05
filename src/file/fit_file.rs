@@ -9,17 +9,26 @@ use std::path::PathBuf;
 
 type MessageBox = Box<dyn DefinedMessageType>;
 pub struct FitFile {
-    file_header: FileHeader,
+    _file_header: FileHeader,
     records: Vec<MessageBox>,
 }
 impl FitFile {
-    pub fn session(&self) -> Vec<&MessageBox> {
+    pub fn message_counts(&self) -> HashMap<&str, u32> {
+        self.records.iter().fold(HashMap::new(), |mut acc, x| {
+            let c = acc.entry(x.name()).or_insert(0);
+            *c += 1;
+            acc
+        })
+    }
+
+    pub fn single_message(&self, name: &str) -> Option<&MessageBox> {
+        self.records.iter().find(|r| r.name() == name)
+    }
+
+    pub fn multiple_messages(&self, name: &str) -> Vec<&MessageBox> {
         self.records
             .iter()
-            .filter_map(|r| match r.name() {
-                "Session" => Some(r),
-                _ => None,
-            })
+            .filter_map(|r| if r.name() == name { Some(r) } else { None })
             .collect()
     }
 
@@ -53,7 +62,7 @@ impl FitFile {
             });
         }
         FitFile {
-            file_header: header,
+            _file_header: header,
             records: records,
         }
     }

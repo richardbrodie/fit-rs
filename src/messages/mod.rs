@@ -1,9 +1,11 @@
 use log::warn;
 use std::collections::HashMap;
 
-use crate::value::Value;
+mod structs;
 mod types;
+pub use self::structs::{DefinedMessageField, DefinedMessageType, FieldNameAndValue};
 pub use self::types::{message_name, type_value};
+use crate::value::Value;
 
 include!(concat!(env!("OUT_DIR"), "/message_definitions.rs"));
 include!(concat!(env!("OUT_DIR"), "/messages.rs"));
@@ -15,67 +17,20 @@ pub fn new_record(num: &u16) -> Option<Box<dyn DefinedMessageType>> {
     message_name(num).and_then(|name| message(name))
 }
 
-#[derive(Debug)]
-pub struct DefinedMessageField {
-    pub num: u16,
-    pub name: &'static str,
-    pub kind: &'static str,
-    pub scale: Option<f64>,
-    pub offset: Option<f64>,
-}
-#[derive(Debug)]
-pub struct FieldNameAndValue<'a> {
-    pub name: &'static str,
-    pub value: Option<&'a Value>,
-}
-
-pub trait DefinedMessageType {
-    // public
-    fn new() -> Self
-    where
-        Self: Sized;
-
-    fn name(&self) -> &str;
-
-    fn process_raw_value(&mut self, num: u16, val: Value) {
-        match self.defined_message_field(num) {
-            Some(field) => {
-                convert_value(val, field).map(|v| self.write_value(num, v));
-            }
-            None => (),
-        }
-    }
-
-    fn field(&self, num: u16) -> Option<FieldNameAndValue> {
-        self.defined_message_field(num).map(|f| FieldNameAndValue {
-            name: f.name,
-            value: self.read_value(num),
-        })
-    }
-
-    fn fields(&self) -> Vec<FieldNameAndValue> {
-        self.inner()
-            .iter()
-            .map(|(k, v)| FieldNameAndValue {
-                name: self.defined_message_field(*k).unwrap().name,
-                value: Some(v),
-            })
-            .collect()
-    }
-    // internal
-    fn inner(&self) -> &HashMap<u16, Value>;
-
-    fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField>;
-
-    fn read_value(&self, num: u16) -> Option<&Value>;
-
-    fn write_value(&mut self, num: u16, val: Value);
-}
-
 fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
     match field.kind {
         x if x.starts_with("uint") || x.starts_with("sint") => {
-            Some(val.scale(field.scale).offset(field.offset))
+            if field.name.ends_with("_lat") || field.name.ends_with("_long") {
+                if let Value::I32(inner) = val {
+                    let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
+                    Some(Value::F32(coord))
+                } else {
+                    warn!("wrong type for coordinate");
+                    None
+                }
+            } else {
+                Some(val.scale(field.scale).offset(field.offset))
+            }
         }
         "string" => Some(val),
         "manufacturer" => {
@@ -127,15 +82,6 @@ fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
             }
         }
         "localtime_into_day" => Some(val),
-        x if x.ends_with("_lat") || x.ends_with("_long") => {
-            if let Value::I32(inner) = val {
-                let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
-                Some(Value::F32(coord))
-            } else {
-                warn!("wrong type for coordinate");
-                None
-            }
-        }
         _ => {
             if let Value::Enum(inner) = val {
                 types::type_value(field.kind, &inner.into()).map(|e| e.into())
@@ -149,7 +95,8 @@ fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{message, message_name, type_value};
+    use crate::Value;
 
     #[test]
     fn it_gets_message_name() {
@@ -195,4 +142,5 @@ mod tests {
         let v: Option<&Value> = t.read_value(3);
         assert_eq!(v.unwrap(), &Value::F64(500.0));
     }
+
 }

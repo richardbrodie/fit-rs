@@ -17,11 +17,17 @@ pub fn read(path: PathBuf) -> FitFile {
 
 #[cfg(test)]
 pub mod tests {
-    use super::Reader;
+    use super::{FitFile, Reader};
     use std::path::PathBuf;
 
     pub fn fit_setup() -> Reader {
         let path = PathBuf::from("fits/working_garmin.fit");
         Reader::new(path)
+    }
+
+    #[test]
+    fn it_reads_whole_file() {
+        let filepath = PathBuf::from("fits/working_garmin.fit");
+        let _ = FitFile::read(filepath);
     }
 }

@@ -9,9 +9,6 @@ pub use self::fit_file::FitFile;
 
 use crate::Reader;
 
-// const TIMESTAMP_HEADER_MASK: u8 = 0x80;
-// const TIMESTAMP_MESSAGE_TYPE_MASK: u8 = 0x60;
-// const TIMESTAMP_OFFSET_MASK: u8 = 0x1F;
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
@@ -24,9 +21,6 @@ impl RecordHeaderByte {
     fn new(reader: &mut Reader) -> Result<Self, ()> {
         reader.byte().map(|b| Self { byte: b }).map_err(|_| ())
     }
-    // fn is_timestamp(&self) -> bool {
-    //     (self.byte & TIMESTAMP_HEADER_MASK) == TIMESTAMP_HEADER_MASK
-    // }
     fn is_definition(&self) -> bool {
         (self.byte & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK
     }
@@ -40,11 +34,8 @@ impl RecordHeaderByte {
 
 #[cfg(test)]
 mod tests {
-    use super::definition_record::DefinitionRecord;
-    use super::file_header::FileHeader;
-    use super::{FitFile, RecordHeaderByte};
-    use crate::tests::*;
-    use std::path::PathBuf;
+    use super::RecordHeaderByte;
+    use crate::tests::fit_setup;
 
     #[test]
     fn it_reads_header_byte() {
@@ -52,28 +43,5 @@ mod tests {
         reader.skip(14); // FileHeader
         let header_byte = RecordHeaderByte::new(&mut reader).unwrap();
         assert_eq!(header_byte.is_definition(), true);
-    }
-
-    #[test]
-    fn it_reads_whole_file() {
-        let filepath = PathBuf::from("fits/working_garmin.fit");
-        let _ = FitFile::read(filepath);
-    }
-
-    #[test]
-    fn it_reads_fileheader() {
-        let mut reader = fit_setup();
-        let fileheader = FileHeader::new(&mut reader).unwrap();
-        assert_eq!(fileheader.num_record_bytes, 191877);
-    }
-
-    #[test]
-    fn it_reads_a_definition() {
-        let mut reader = fit_setup();
-        reader.skip(14); // FileHeader
-        reader.skip(1); // HeaderByte
-        let definition = DefinitionRecord::new(&mut reader, false);
-        // now 41
-        assert_eq!(definition.number_of_fields, 7);
     }
 }

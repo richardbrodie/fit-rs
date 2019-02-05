@@ -1,6 +1,6 @@
 #![warn(unstable_name_collisions)]
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum Value {
     Enum(u8),
     Str(String),
@@ -119,6 +119,45 @@ impl Value {
         match self {
             Value::F64(_v) => true,
             _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Value::U8(v) => write!(f, "{}", v),
+            Value::U16(v) => write!(f, "{}", v),
+            Value::U32(v) => write!(f, "{}", v),
+            Value::U64(v) => write!(f, "{}", v),
+            Value::I8(v) => write!(f, "{}", v),
+            Value::I16(v) => write!(f, "{}", v),
+            Value::I32(v) => write!(f, "{}", v),
+            Value::I64(v) => write!(f, "{}", v),
+            Value::F32(v) => write!(f, "{}", v),
+            Value::F64(v) => write!(f, "{}", v),
+            Value::Time(v) => write!(f, "{}", v),
+            Value::Str(v) => write!(f, "\"{}\"", v),
+            Value::Enum(v) => write!(f, "\"{}\"", v),
+        }
+    }
+}
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Value::U8(v) => write!(f, "{} /u8", v),
+            Value::U16(v) => write!(f, "{} /u16", v),
+            Value::U32(v) => write!(f, "{} /u32", v),
+            Value::U64(v) => write!(f, "{} /u64", v),
+            Value::I8(v) => write!(f, "{} /i8", v),
+            Value::I16(v) => write!(f, "{} /i16", v),
+            Value::I32(v) => write!(f, "{} /i32", v),
+            Value::I64(v) => write!(f, "{} /i64", v),
+            Value::F32(v) => write!(f, "{} /f32", v),
+            Value::F64(v) => write!(f, "{} /f64", v),
+            Value::Time(v) => write!(f, "{} /time", v),
+            Value::Str(v) => write!(f, "\"{}\" /str", v),
+            Value::Enum(v) => write!(f, "\"{}\" /enum", v),
         }
     }
 }
