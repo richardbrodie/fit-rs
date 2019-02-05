@@ -49,11 +49,11 @@ impl FitFile {
                 } else {
                     definitions
                         .get(&h.local_msg_number())
-                        .map(|def| match def.new_record(&mut reader) {
-                            Some(record) => {
-                                records.push(record);
-                            }
-                            None => warn!(":: no record found for {}", def.global_message_num),
+                        .map(|def| {
+                            def.read_data_record(&mut reader).map_or_else(
+                                || warn!(":: no record found for {}", def.global_message_num),
+                                |record| records.push(record),
+                            )
                         })
                         .or_else(|| {
                             panic!("could not find definition for {}", &h.local_msg_number())

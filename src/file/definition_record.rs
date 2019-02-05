@@ -40,7 +40,7 @@ impl DefinitionRecord {
             dev_field_defs: Vec::new(),
         }
     }
-    pub fn new_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
+    pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
         let mut record = new_record(&self.global_message_num);
         for fd in &self.field_defs {
             let data_field = DataField::new(reader, &self.architecture, &fd);
