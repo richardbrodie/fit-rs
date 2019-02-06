@@ -32,7 +32,7 @@ impl<'a> std::fmt::Debug for FieldNameAndValue<'a> {
     }
 }
 
-pub trait DefinedMessageType {
+pub trait DefinedMessageType: Sync + Send {
     // public
     fn new() -> Self
     where

@@ -42,7 +42,7 @@ impl DefinitionRecord {
     }
     pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
         let mut record = new_record(&self.global_message_num);
-        for fd in &self.field_defs {
+        &self.field_defs.iter().for_each(|fd| {
             let data_field = DataField::new(reader, &self.architecture, &fd);
             if let Some(vals) = data_field.values {
                 match &mut record {
@@ -52,7 +52,7 @@ impl DefinitionRecord {
                     None => (),
                 }
             }
-        }
+        });
         record
     }
 }
