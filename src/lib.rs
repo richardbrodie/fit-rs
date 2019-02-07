@@ -21,13 +21,15 @@ pub mod tests {
     use std::path::PathBuf;
 
     pub fn fit_setup() -> Reader {
-        let path = PathBuf::from("fits/working_garmin.fit");
+        let path = PathBuf::from("fits/fletcher.fit");
         Reader::new(path)
     }
 
     #[test]
     fn it_reads_whole_file() {
-        let filepath = PathBuf::from("fits/working_garmin.fit");
+        // let filepath = PathBuf::from("fits/working_garmin.fit");
+        // let filepath = PathBuf::from("fits/2913547417.fit");
+        let filepath = PathBuf::from("fits/fletcher.fit");
         let _ = FitFile::read(filepath);
     }
 }

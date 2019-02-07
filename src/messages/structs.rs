@@ -40,7 +40,8 @@ pub trait DefinedMessageType: Sync + Send {
 
     fn name(&self) -> &str;
 
-    fn process_raw_value(&mut self, num: u16, val: Value) {
+    fn process_raw_value(&mut self, num: u16, vals: &[Value]) {
+        let val = &vals[0];
         match self.defined_message_field(num) {
             Some(field) => {
                 convert_value(val, field).map(|v| self.write_value(num, v));

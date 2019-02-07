@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 fn read_file() {
     let filepath = PathBuf::from("fits/working_garmin.fit");
+    // let filepath = PathBuf::from("fits/2913547417.fit");
     let _ = fit::FitFile::read(filepath);
 }
 

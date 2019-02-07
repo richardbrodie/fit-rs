@@ -47,7 +47,7 @@ impl DefinitionRecord {
             if let Some(vals) = data_field.values {
                 match &mut record {
                     Some(r) => {
-                        r.process_raw_value(data_field.id, vals[0].clone());
+                        r.process_raw_value(data_field.id, &vals);
                     }
                     None => (),
                 }
