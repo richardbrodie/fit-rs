@@ -6,8 +6,7 @@ mod file_header;
 mod fit_file;
 
 pub use self::fit_file::FitFile;
-
-use crate::Reader;
+use crate::reader::Reader;
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;

@@ -1,13 +1,17 @@
 use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
 use super::RecordHeaderByte;
-use crate::{DefinedMessageType, Reader};
+use crate::reader::Reader;
+use crate::DefinedMessageType;
 
 use log::warn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 type MessageBox = Box<dyn DefinedMessageType>;
+
+/// A wrapper around the sequence of Records parsed
+
 pub struct FitFile {
     _file_header: FileHeader,
     records: Vec<MessageBox>,

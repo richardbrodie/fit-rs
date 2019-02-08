@@ -144,9 +144,3 @@ mod tests {
     }
 
 }
-
-// impl From<&u8> for &u32 {
-//     fn from(f: &u8) -> Self {
-//         *f as u32
-//     }
-// }

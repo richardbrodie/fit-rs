@@ -1,6 +1,7 @@
 use super::base_type::BaseType;
 use super::data_field::DataField;
-use crate::{new_record, DefinedMessageType, Endian, Reader};
+use crate::messages::{new_record, DefinedMessageType};
+use crate::reader::{Endian, Reader};
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;

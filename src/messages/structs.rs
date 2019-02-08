@@ -32,12 +32,16 @@ impl<'a> std::fmt::Debug for FieldNameAndValue<'a> {
     }
 }
 
+/// A trait representing all the different message types as defined in the FIT SDK.
 pub trait DefinedMessageType: Sync + Send {
     // public
     fn new() -> Self
     where
         Self: Sized;
 
+    /// The name of the underlying message.
+    ///
+    /// For example, "Record", "Session", "Device Settings", etc
     fn name(&self) -> &str;
 
     fn process_raw_value(&mut self, num: u16, vals: &[Value]) {
@@ -50,6 +54,7 @@ pub trait DefinedMessageType: Sync + Send {
         }
     }
 
+    /// Return the name and value of a specific field number
     fn field(&self, num: u16) -> Option<FieldNameAndValue> {
         self.defined_message_field(num).map(|f| FieldNameAndValue {
             name: f.name,
