@@ -1,5 +1,6 @@
 #![warn(unstable_name_collisions)]
 
+/// The container type for the different values.
 #[derive(PartialEq, Clone)]
 pub enum Value {
     Enum(u8),
@@ -218,8 +219,28 @@ impl From<&str> for Value {
     }
 }
 
+/// An error type produced by the TryFrom trait
 #[derive(Debug)]
 pub struct ValueError {}
+
+/// A flexible and safe method of extracting the internal value from a Value enum.
+///
+/// It will return a ValueError if the internal value cannot be safely cast into the desired type.
+///
+/// # Example
+///
+/// ```rust
+/// use fit::{TryFrom, Value};
+///
+/// let val = Value::U8(127);
+/// let target = u16::try_from(&val);
+/// assert!(target.is_ok());
+///
+/// let val = Value::U32(127);
+/// let target = u16::try_from(&val);
+/// assert!(target.is_err());
+/// ```
+///
 pub trait TryFrom<T> {
     type Error;
     fn try_from(value: T) -> Result<Self, Self::Error>
@@ -334,3 +355,21 @@ impl TryFrom<&Value> for i64 {
 //         }
 //     }
 // }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_casts_down() {
+        let v = Value::U8(127);
+        let t = u16::try_from(&v);
+        assert!(t.is_ok());
+    }
+
+    #[test]
+    fn it_fails_casting_up() {
+        let v = Value::U32(127);
+        let t = u16::try_from(&v);
+        assert!(t.is_err());
+    }
+}

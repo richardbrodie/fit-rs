@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 fn main() {
     env_logger::init();
-    let filepath = PathBuf::from("fits/2913547417.fit");
+    let filepath = PathBuf::from("fits/garmin_520_power.fit");
     let f = fit::FitFile::read(filepath);
     f.multiple_messages("Record").iter().for_each(|r| {
-        println!("{:#?}", r.fields());
+        println!("{:#?}", r.all_values());
     })
 }

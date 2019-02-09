@@ -10,27 +10,32 @@ build = "build.rs"
 
 [dependencies]
 log = "0.4"
-env_logger = "0.6.0"
 
 [dev-dependencies]
+env_logger = "0.6.0"
 criterion = "0.2"
 
 [build-dependencies]
 heck = ""
 csv = "^1.0.5"
 
-[[bench]]
-name = "read_file"
-harness = false
-
 [profile.release]
 codegen-units = 1
 incremental = false
 
 [[example]]
-name = "show_messages"
-path = "examples/show_messages.rs"
+name = "show_message_counts"
+path = "examples/show_message_counts.rs"
 
 [[example]]
 name = "iterate_records"
 path = "examples/iterate_records.rs"
+
+[[example]]
+name = "fetch_session"
+path = "examples/fetch_session.rs"
+
+[[bench]]
+name = "read_file"
+harness = false
+

@@ -2,7 +2,8 @@ use super::base_type::BaseType;
 use super::consts::*;
 use super::definition_record::FieldDefinition;
 
-use crate::{Endian, Reader, Value};
+use crate::reader::{Endian, Reader};
+use crate::Value;
 
 #[derive(Debug)]
 pub struct DataField {

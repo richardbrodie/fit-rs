@@ -17,25 +17,25 @@ pub fn new_record(num: &u16) -> Option<Box<dyn DefinedMessageType>> {
     message_name(num).and_then(|name| message(name))
 }
 
-fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
+fn convert_value(val: &Value, field: &DefinedMessageField) -> Option<Value> {
     match field.kind {
         x if x.starts_with("uint") || x.starts_with("sint") => {
             if field.name.ends_with("_lat") || field.name.ends_with("_long") {
                 if let Value::I32(inner) = val {
-                    let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
+                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
                     Some(Value::F32(coord))
                 } else {
                     warn!("wrong type for coordinate");
                     None
                 }
             } else {
-                Some(val.scale(field.scale).offset(field.offset))
+                Some(val.clone().scale(field.scale).offset(field.offset))
             }
         }
-        "string" => Some(val),
+        "string" => Some(val.clone()),
         "manufacturer" => {
             if let Value::U16(inner) = val {
-                types::type_value("manufacturer", &inner.into()).map(|s| s.into())
+                types::type_value("manufacturer", &(*inner as u32)).map(|s| s.into())
             } else {
                 warn!("wrong type for manfacturer: {:?}", val);
                 None
@@ -51,15 +51,15 @@ fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
         }
         "device_index" => {
             if let Value::U8(inner) = val {
-                types::type_value("device_index", &inner.into()).map(|s| s.into())
+                types::type_value("device_index", &(*inner as u32)).map(|s| s.into())
             } else {
                 warn!("wrong type for device index: {:?}", val);
                 None
             }
         }
         "battery_status" => {
-            if let Value::U8(inner) = val {
-                types::type_value("battery_status", &inner.into()).map(|s| s.into())
+            if let Value::U8(inner) = *val {
+                types::type_value("battery_status", &(inner as u32)).map(|s| s.into())
             } else {
                 warn!("wrong type for battery_status: {:?}", val);
                 None
@@ -67,7 +67,7 @@ fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
         }
         "message_index" => {
             if let Value::U16(inner) = val {
-                types::type_value("message_index", &inner.into()).map(|s| s.into())
+                types::type_value("message_index", &(*inner as u32)).map(|s| s.into())
             } else {
                 warn!("wrong type for message_index: {:?}", val);
                 None
@@ -81,10 +81,10 @@ fn convert_value(val: Value, field: &DefinedMessageField) -> Option<Value> {
                 None
             }
         }
-        "localtime_into_day" => Some(val),
+        "localtime_into_day" => Some(val.clone()),
         _ => {
             if let Value::Enum(inner) = val {
-                types::type_value(field.kind, &inner.into()).map(|e| e.into())
+                types::type_value(field.kind, &(*inner as u32)).map(|e| e.into())
             } else {
                 warn!("wrong type for `{}`: {:?}", field.kind, &val);
                 None
@@ -119,7 +119,7 @@ mod tests {
         let f_n = f.name;
         assert_eq!(f_n, "type");
         t.write_value(0, Value::U32(12));
-        let v: Option<&Value> = t.read_value(0);
+        let v: Option<&Value> = t.value(0);
         assert_eq!(v.unwrap(), &Value::U32(12));
     }
 
@@ -128,8 +128,8 @@ mod tests {
         let mut t = message("device_settings").unwrap();
         let n = t.name();
         assert_eq!(n, "Device Settings");
-        t.process_raw_value(5, Value::U32(20));
-        let v: Option<&Value> = t.read_value(5);
+        t.process_raw_value(5, &[Value::U32(20)]);
+        let v: Option<&Value> = t.value(5);
         assert_eq!(v.unwrap(), &Value::F64(5.0));
     }
 
@@ -138,8 +138,8 @@ mod tests {
         let mut t = message("gps_metadata").unwrap();
         let n = t.name();
         assert_eq!(n, "Gps Metadata");
-        t.process_raw_value(3, Value::U32(5000));
-        let v: Option<&Value> = t.read_value(3);
+        t.process_raw_value(3, &[Value::U32(5000)]);
+        let v: Option<&Value> = t.value(3);
         assert_eq!(v.unwrap(), &Value::F64(500.0));
     }
 
