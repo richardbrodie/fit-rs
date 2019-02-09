@@ -13,10 +13,20 @@ mod reader;
 mod value;
 
 pub use self::file::FitFile;
-pub use self::messages::DefinedMessageType;
+pub use self::messages::{DefinedMessageType, FieldNameAndValue};
 pub use self::value::{TryFrom, Value, ValueError};
 
 /// Reads the file and returns a FitFile.
+///
+/// # Example
+///
+/// ```rust
+/// use fit::FitFile;
+/// use std::path::PathBuf;
+///
+/// let filepath = PathBuf::from("fits/garmin_1000.fit");
+/// let _ = FitFile::read(filepath);
+/// ```
 pub fn read(path: PathBuf) -> FitFile {
     file::FitFile::read(path)
 }

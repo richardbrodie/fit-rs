@@ -122,9 +122,6 @@ impl DefinedMessageType for {0} {{
     fn write_value(&mut self, num: u16, val: Value) {{
         self.values.insert(num, val);
     }}
-    fn read_value(&self, num: u16) -> Option<&Value> {{
-        self.values.get(&num)
-    }}
     fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField> {{
         match num {{
 "#,

@@ -119,7 +119,7 @@ mod tests {
         let f_n = f.name;
         assert_eq!(f_n, "type");
         t.write_value(0, Value::U32(12));
-        let v: Option<&Value> = t.read_value(0);
+        let v: Option<&Value> = t.value(0);
         assert_eq!(v.unwrap(), &Value::U32(12));
     }
 
@@ -129,7 +129,7 @@ mod tests {
         let n = t.name();
         assert_eq!(n, "Device Settings");
         t.process_raw_value(5, &[Value::U32(20)]);
-        let v: Option<&Value> = t.read_value(5);
+        let v: Option<&Value> = t.value(5);
         assert_eq!(v.unwrap(), &Value::F64(5.0));
     }
 
@@ -139,7 +139,7 @@ mod tests {
         let n = t.name();
         assert_eq!(n, "Gps Metadata");
         t.process_raw_value(3, &[Value::U32(5000)]);
-        let v: Option<&Value> = t.read_value(3);
+        let v: Option<&Value> = t.value(3);
         assert_eq!(v.unwrap(), &Value::F64(500.0));
     }
 

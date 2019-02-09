@@ -17,6 +17,14 @@ pub struct FitFile {
     records: Vec<MessageBox>,
 }
 impl FitFile {
+    /// Return the name and value of a specific field number
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     pub fn message_counts(&self) -> HashMap<&str, u32> {
         self.records.iter().fold(HashMap::new(), |mut acc, x| {
             let c = acc.entry(x.name()).or_insert(0);
@@ -25,10 +33,26 @@ impl FitFile {
         })
     }
 
+    /// Return the name and value of a specific field number
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     pub fn single_message(&self, name: &str) -> Option<&MessageBox> {
         self.records.iter().find(|r| r.name() == name)
     }
 
+    /// Return the name and value of a specific field number
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     pub fn multiple_messages(&self, name: &str) -> Vec<&MessageBox> {
         self.records
             .iter()
@@ -36,6 +60,14 @@ impl FitFile {
             .collect()
     }
 
+    /// Return the name and value of a specific field number
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     pub fn read(path: PathBuf) -> FitFile {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();

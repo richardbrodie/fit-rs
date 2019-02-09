@@ -2,6 +2,7 @@ use super::convert_value;
 use crate::value::Value;
 use std::collections::HashMap;
 
+/// A collection of information about a specific message field, as defined in the FIT SDK.
 #[derive(Debug)]
 pub struct DefinedMessageField {
     pub num: u16,
@@ -11,6 +12,7 @@ pub struct DefinedMessageField {
     pub offset: Option<f64>,
 }
 
+/// The name and parsed value of a message field.
 pub struct FieldNameAndValue<'a> {
     pub name: &'static str,
     pub value: Option<&'a Value>,
@@ -39,7 +41,7 @@ pub trait DefinedMessageType: Sync + Send {
     where
         Self: Sized;
 
-    /// The name of the underlying message.
+    /// The name of the underlying message, as defined in the SDK.
     ///
     /// For example, "Record", "Session", "Device Settings", etc
     fn name(&self) -> &str;
@@ -54,15 +56,30 @@ pub trait DefinedMessageType: Sync + Send {
         }
     }
 
-    /// Return the name and value of a specific field number
-    fn field(&self, num: u16) -> Option<FieldNameAndValue> {
+    /// Extract the name and value of a specific field number, if used.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
+    fn field_name_and_value(&self, num: u16) -> Option<FieldNameAndValue> {
         self.defined_message_field(num).map(|f| FieldNameAndValue {
             name: f.name,
-            value: self.read_value(num),
+            value: self.value(num),
         })
     }
 
-    fn fields(&self) -> Vec<FieldNameAndValue> {
+    /// Extract a collection of the names and values of all used fields.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
+    fn all_values(&self) -> Vec<FieldNameAndValue> {
         self.inner()
             .iter()
             .map(|(k, v)| FieldNameAndValue {
@@ -71,12 +88,49 @@ pub trait DefinedMessageType: Sync + Send {
             })
             .collect()
     }
-    // internal
+
+    /// Expose the internal field value store. Should be private, but is necessary for trait
+    /// objects.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     fn inner(&self) -> &HashMap<u16, Value>;
 
+    /// Extract the field definition of a specific field number, if used.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField>;
 
-    fn read_value(&self, num: u16) -> Option<&Value>;
+    /// Extract the value of a specific field number, if used.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
+    fn value(&self, num: u16) -> Option<&Value> {
+        self.inner().get(&num)
+    }
 
+    /// Writes a [`Value`] directly to the internal HashMap. Should not be used directly, rather
+    /// Values should be inserted via `#process_raw_value`.
+    ///
+    /// [`Value`]: enum.Value.html
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///
+    /// ```
     fn write_value(&mut self, num: u16, val: Value);
 }
