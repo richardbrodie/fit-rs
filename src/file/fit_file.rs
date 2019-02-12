@@ -10,21 +10,53 @@ use std::path::PathBuf;
 
 type MessageBox = Box<dyn DefinedMessageType>;
 
-/// A wrapper around the sequence of Records parsed
+/// An iterator over the parsed Records
+pub struct MessageIterator<'a> {
+    i: usize,
+    v: &'a Vec<MessageBox>,
+}
+impl<'a> MessageIterator<'a> {
+    pub fn filter_name(self, name: &'a str) -> FilterMessageIterator<'a, Self> {
+        FilterMessageIterator { k: name, i: self }
+    }
+}
+impl<'a> Iterator for MessageIterator<'a> {
+    type Item = &'a MessageBox;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.v.get(self.i) {
+            Some(item) => {
+                self.i += 1;
+                Some(item)
+            }
+            _ => None,
+        }
+    }
+}
+pub struct FilterMessageIterator<'a, MessageIterator> {
+    k: &'a str,
+    i: MessageIterator,
+}
+impl<'a, I: Iterator<Item = &'a MessageBox>> Iterator for FilterMessageIterator<'a, I> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<I::Item> {
+        for x in &mut self.i {
+            if x.name() == self.k {
+                return Some(x);
+            }
+        }
+        None
+    }
+}
+/// A wrapper around the sequence of Records parsed
 pub struct FitFile {
     _file_header: FileHeader,
     records: Vec<MessageBox>,
 }
 impl FitFile {
-    /// Return the name and value of a specific field number
+    /// Return a summary of parsed messages
     ///
-    /// # Example
-    ///
-    /// ```rust
-    ///
-    ///
-    /// ```
     pub fn message_counts(&self) -> HashMap<&str, u32> {
         self.records.iter().fold(HashMap::new(), |mut acc, x| {
             let c = acc.entry(x.name()).or_insert(0);
@@ -33,31 +65,25 @@ impl FitFile {
         })
     }
 
-    /// Return the name and value of a specific field number
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    ///
-    ///
-    /// ```
-    pub fn single_message(&self, name: &str) -> Option<&MessageBox> {
-        self.records.iter().find(|r| r.name() == name)
-    }
+    ///// Return the name and value of a specific field number
+    /////
+    ///// # Example
+    /////
+    ///// ```rust
+    /////
+    /////
+    ///// ```
+    //pub fn single_message(&self, name: &str) -> Option<&MessageBox> {
+    //    self.records.iter().find(|r| r.name() == name)
+    //}
 
-    /// Return the name and value of a specific field number
+    /// Return an iterator over the parsed messages
     ///
-    /// # Example
-    ///
-    /// ```rust
-    ///
-    ///
-    /// ```
-    pub fn multiple_messages(&self, name: &str) -> Vec<&MessageBox> {
-        self.records
-            .iter()
-            .filter_map(|r| if r.name() == name { Some(r) } else { None })
-            .collect()
+    pub fn messages<'a>(&'a self) -> MessageIterator<'a> {
+        MessageIterator {
+            i: 0,
+            v: &self.records,
+        }
     }
 
     /// Return the name and value of a specific field number

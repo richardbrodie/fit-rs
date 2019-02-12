@@ -28,11 +28,11 @@ impl DefinitionRecord {
         let global_message_num = reader.u16(&endian).unwrap();
         let number_of_fields = reader.byte().unwrap();
         let mut field_defs = Vec::with_capacity(number_of_fields as usize);
-        for _ in 0..number_of_fields {
+        (0..number_of_fields).into_iter().for_each(|_| {
             let buf = reader.bytes(3).unwrap();
             let field = FieldDefinition::new(&buf);
             field_defs.push(field);
-        }
+        });
         DefinitionRecord {
             architecture: endian,
             global_message_num: global_message_num,

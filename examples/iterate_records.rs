@@ -7,7 +7,7 @@ fn main() {
     env_logger::init();
     let filepath = PathBuf::from("fits/garmin_520_power.fit");
     let f = fit::FitFile::read(filepath);
-    f.multiple_messages("Record").iter().for_each(|r| {
+    for r in f.messages().filter_name("Record") {
         println!("{:#?}", r.all_values());
-    })
+    }
 }
