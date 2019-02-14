@@ -65,18 +65,6 @@ impl FitFile {
         })
     }
 
-    ///// Return the name and value of a specific field number
-    /////
-    ///// # Example
-    /////
-    ///// ```rust
-    /////
-    /////
-    ///// ```
-    //pub fn single_message(&self, name: &str) -> Option<&MessageBox> {
-    //    self.records.iter().find(|r| r.name() == name)
-    //}
-
     /// Return an iterator over the parsed messages
     ///
     pub fn messages<'a>(&'a self) -> MessageIterator<'a> {
@@ -97,12 +85,13 @@ impl FitFile {
     pub fn read(path: PathBuf) -> FitFile {
         let mut reader = Reader::new(path);
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        let mut records: Vec<MessageBox> = Vec::new();
+        let mut records: Vec<MessageBox> = Vec::with_capacity(5000);
 
         let header = FileHeader::new(&mut reader).unwrap();
 
-        while reader.pos().unwrap() < u64::from(header.file_length()) {
-            let _ = RecordHeaderByte::new(&mut reader).map(|h| {
+        let file_length = u64::from(header.file_length());
+        while reader.pos().unwrap() < file_length {
+            RecordHeaderByte::new(&mut reader).map(|h| {
                 if h.is_definition() {
                     definitions.insert(
                         h.local_msg_number(),

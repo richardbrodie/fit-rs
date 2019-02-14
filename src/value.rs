@@ -21,6 +21,7 @@ pub enum Value {
 impl Value {
     pub fn scale(self, s: Option<f64>) -> Self {
         match s {
+            None => self,
             Some(rhs) => match self {
                 Value::U8(v) => Value::F64(v as f64 / rhs),
                 Value::U16(v) => Value::F64(v as f64 / rhs),
@@ -34,11 +35,11 @@ impl Value {
                 Value::F64(v) => Value::F64(v / rhs),
                 _ => self,
             },
-            None => self,
         }
     }
     pub fn offset(self, o: Option<f64>) -> Self {
         match o {
+            None => self,
             Some(rhs) => match self {
                 Value::U8(v) => Value::F64(v as f64 - rhs),
                 Value::U16(v) => Value::F64(v as f64 - rhs),
@@ -52,7 +53,6 @@ impl Value {
                 Value::F64(v) => Value::F64(v - rhs),
                 _ => self,
             },
-            None => self,
         }
     }
 
@@ -332,29 +332,7 @@ impl TryFrom<&Value> for i64 {
         }
     }
 }
-// impl TryFrom<Value> for f32 {
-//     type Error = ValueError;
-//     fn try_from(val: &Value) -> Result<Self, Self::Error> {
-//         match val {
-//             Value::I8(v) => Ok(*v as f32),
-//             Value::I16(v) => Ok(*v as f32),
-//             Value::I32(v) => Ok(*v as f32),
-//             _ => Err(ValueError {}),
-//         }
-//     }
-// }
-// impl TryFrom<Value> for f64 {
-//     type Error = ValueError;
-//     fn try_from(val: &Value) -> Result<Self, Self::Error> {
-//         match val {
-//             Value::I8(v) => Ok(*v as f64),
-//             Value::I16(v) => Ok(*v as f64),
-//             Value::I32(v) => Ok(*v as f64),
-//             Value::I64(v) => Ok(*v as f64),
-//             _ => Err(ValueError {}),
-//         }
-//     }
-// }
+
 #[cfg(test)]
 mod tests {
     use super::*;

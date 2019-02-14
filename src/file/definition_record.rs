@@ -27,12 +27,13 @@ impl DefinitionRecord {
         };
         let global_message_num = reader.u16(&endian).unwrap();
         let number_of_fields = reader.byte().unwrap();
-        let mut field_defs = Vec::with_capacity(number_of_fields as usize);
-        (0..number_of_fields).into_iter().for_each(|_| {
-            let buf = reader.bytes(3).unwrap();
-            let field = FieldDefinition::new(&buf);
-            field_defs.push(field);
-        });
+        let field_defs: Vec<_> = (0..number_of_fields)
+            .into_iter()
+            .map(|_| {
+                let buf = reader.bytes(3).unwrap();
+                FieldDefinition::new(&buf)
+            })
+            .collect();
         DefinitionRecord {
             architecture: endian,
             global_message_num: global_message_num,
@@ -42,19 +43,21 @@ impl DefinitionRecord {
         }
     }
     pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
-        let mut record = new_record(&self.global_message_num);
-        &self.field_defs.iter().for_each(|fd| {
-            let data_field = DataField::new(reader, &self.architecture, &fd);
-            if let Some(vals) = data_field.values {
-                match &mut record {
-                    Some(r) => {
-                        r.process_raw_value(data_field.id, &vals);
-                    }
-                    None => (),
+        let mut raw_fields: Vec<_> = self
+            .field_defs
+            .iter()
+            .map(|fd| DataField::new(reader, &self.architecture, &fd))
+            .collect();
+        new_record(&self.global_message_num).and_then(|mut r| {
+            raw_fields.into_iter().for_each(|df| {
+                if let Some(vals) = df.values {
+                    let val = &vals[0];
+                    r.process_raw_value(df.id, &val);
                 }
-            }
+            });
+            return Some(r);
         });
-        record
+        None
     }
 }
 
@@ -82,6 +85,7 @@ impl FieldDefinition {
 mod tests {
     use super::DefinitionRecord;
     use crate::tests::fit_setup;
+    use crate::Value;
 
     #[test]
     fn it_reads_a_definition() {

@@ -1,6 +1,5 @@
 use super::convert_value;
 use crate::value::Value;
-use std::collections::HashMap;
 
 /// A collection of information about a specific message field, as defined in the FIT SDK.
 #[derive(Debug)]
@@ -46,8 +45,7 @@ pub trait DefinedMessageType: Sync + Send {
     /// For example, "Record", "Session", "Device Settings", etc
     fn name(&self) -> &str;
 
-    fn process_raw_value(&mut self, num: u16, vals: &[Value]) {
-        let val = &vals[0];
+    fn process_raw_value(&mut self, num: u16, val: &Value) {
         match self.defined_message_field(num) {
             Some(field) => {
                 convert_value(val, field).map(|v| self.write_value(num, v));
@@ -98,7 +96,7 @@ pub trait DefinedMessageType: Sync + Send {
     ///
     ///
     /// ```
-    fn inner(&self) -> &HashMap<u16, Value>;
+    fn inner(&self) -> &Vec<(u16, Value)>;
 
     /// Extract the field definition of a specific field number, if used.
     ///
@@ -119,7 +117,10 @@ pub trait DefinedMessageType: Sync + Send {
     ///
     /// ```
     fn value(&self, num: u16) -> Option<&Value> {
-        self.inner().get(&num)
+        match self.inner().iter().find(|x| x.0 == num) {
+            Some(x) => Some(&x.1),
+            None => None,
+        }
     }
 
     /// Writes a [`Value`] directly to the internal HashMap. Should not be used directly, rather

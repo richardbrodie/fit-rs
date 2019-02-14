@@ -108,19 +108,19 @@ fn read_messages_csv() {
                 "{}",
                 format!(
                     r#"#[derive(Debug)]
-pub struct {0} {{ values: HashMap<u16, Value> }}
+pub struct {0} {{ values: Vec<(u16, Value)> }}
 impl DefinedMessageType for {0} {{
     fn new() -> Self {{
-        Self {{ values: HashMap::new() }} 
+        Self {{ values: Vec::with_capacity(16) }} 
     }}
-    fn inner(&self) -> &HashMap<u16, Value> {{
+    fn inner(&self) -> &Vec<(u16, Value)> {{
         &self.values
     }}
     fn name(&self) -> &str {{
         "{1}"
     }}
     fn write_value(&mut self, num: u16, val: Value) {{
-        self.values.insert(num, val);
+        self.values.push((num, val));
     }}
     fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField> {{
         match num {{

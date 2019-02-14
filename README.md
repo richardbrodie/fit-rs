@@ -31,9 +31,6 @@ After reading a FIT file, a digest of message types can be inspected by calling
 
 ```rust
     println!("{:#?}", f.message_counts());
-    f.multiple_messages("Record").iter().for_each(|r| {
-        println!("{:#?}", r.all_values());
-    })
 ```
 
 which will return a list similar to the following, showing respectively the name of the record type (as defined in the FIT SDK), and the number of records parsed
@@ -54,7 +51,7 @@ which will return a list similar to the following, showing respectively the name
 Armed with this information, we can call
 
 ```rust
-    f.multiple_messages("Record").iter().for_each(|r| {
+    f.messages().filter("Record").for_each(|r| {
         println!("{:#?}", r.all_values());
     })
 ```
