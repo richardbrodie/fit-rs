@@ -9,7 +9,7 @@ It currently *does not* support FIT files using custom developer fields.
 
 ```toml
 [dependencies]
-fit = "0.0.2"
+fit = "0.2"
 ```
 
 ## Usage
