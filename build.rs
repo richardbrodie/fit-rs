@@ -42,7 +42,7 @@ fn read_types_csv() {
                 &mut out_file,
                 "{}",
                 format!(
-                    "pub fn {}(key: &u32) -> Option<&'static str> {{\n  match key {{\n",
+                    "pub fn {}(key: u32) -> Option<&'static str> {{\n  match key {{\n",
                     name
                 )
             )

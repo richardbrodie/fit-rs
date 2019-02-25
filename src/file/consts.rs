@@ -38,13 +38,13 @@ pub const UINT16_TYPE: BaseTypeStruct = BaseTypeStruct {
 pub const SINT32_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 5,
     _typefield: 0x85,
-    invalidvalue: 0x7FFFFFFF,
+    invalidvalue: 0x7F_FFF_FFF,
     byte_size: 4,
 };
 pub const UINT32_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 6,
     _typefield: 0x86,
-    invalidvalue: 0xFFFFFFFF,
+    invalidvalue: 0xFF_FFF_FFF,
     byte_size: 4,
 };
 pub const STRING_TYPE: BaseTypeStruct = BaseTypeStruct {
@@ -56,13 +56,13 @@ pub const STRING_TYPE: BaseTypeStruct = BaseTypeStruct {
 pub const FLOAT32_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 8,
     _typefield: 0x88,
-    invalidvalue: 0xFFFFFFFF,
+    invalidvalue: 0xFF_FFF_FFF,
     byte_size: 4,
 };
 pub const FLOAT64_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 9,
     _typefield: 0x89,
-    invalidvalue: 0xFFFFFFFFFFFFFFFF,
+    invalidvalue: 0xF_FFF_FFF_FFF_FFF_FFF,
     byte_size: 8,
 };
 pub const UINT8Z_TYPE: BaseTypeStruct = BaseTypeStruct {
@@ -80,7 +80,7 @@ pub const UINT16Z_TYPE: BaseTypeStruct = BaseTypeStruct {
 pub const UINT32Z_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 12,
     _typefield: 0x8C,
-    invalidvalue: 0x00000000,
+    invalidvalue: 0x00_000_000,
     byte_size: 4,
 };
 pub const BYTE_TYPE: BaseTypeStruct = BaseTypeStruct {
@@ -92,18 +92,18 @@ pub const BYTE_TYPE: BaseTypeStruct = BaseTypeStruct {
 pub const SINT64_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 14,
     _typefield: 0x8E,
-    invalidvalue: 0x7FFFFFFFFFFFFFFF,
+    invalidvalue: 0x7_FFF_FFF_FFF_FFF_FFF,
     byte_size: 8,
 };
 pub const UINT64_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 15,
     _typefield: 0x8F,
-    invalidvalue: 0xFFFFFFFFFFFFFFFF,
+    invalidvalue: 0xF_FFF_FFF_FFF_FFF_FFF,
     byte_size: 8,
 };
 pub const UINT64Z_TYPE: BaseTypeStruct = BaseTypeStruct {
     _id: 16,
     _typefield: 0x90,
-    invalidvalue: 0x0000000000000000,
+    invalidvalue: 0x0_000_000_000_000_000,
     byte_size: 8,
 };

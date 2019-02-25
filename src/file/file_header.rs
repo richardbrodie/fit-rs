@@ -31,7 +31,7 @@ impl FileHeader {
 
 fn read_fit_string(buffer: &[u8]) -> bool {
     let ext = ".FIT";
-    return buffer == ext.as_bytes();
+    buffer == ext.as_bytes()
 }
 
 #[cfg(test)]
@@ -43,6 +43,6 @@ mod tests {
     fn it_reads_fileheader() {
         let mut reader = fit_setup();
         let fileheader = FileHeader::new(&mut reader).unwrap();
-        assert_eq!(fileheader.num_record_bytes, 191877);
+        assert_eq!(fileheader.num_record_bytes, 191_877);
     }
 }

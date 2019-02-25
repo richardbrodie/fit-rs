@@ -91,7 +91,7 @@ impl FitFile {
 
         let file_length = u64::from(header.file_length());
         while reader.pos().unwrap() < file_length {
-            RecordHeaderByte::new(&mut reader).map(|h| {
+            if let Ok(h) = RecordHeaderByte::new(&mut reader) {
                 if h.is_definition() {
                     definitions.insert(
                         h.local_msg_number(),
@@ -110,11 +110,11 @@ impl FitFile {
                             panic!("could not find definition for {}", &h.local_msg_number())
                         });
                 }
-            });
+            }
         }
         FitFile {
             _file_header: header,
-            records: records,
+            records,
         }
     }
 }

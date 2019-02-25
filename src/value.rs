@@ -23,15 +23,15 @@ impl Value {
         match s {
             None => self,
             Some(rhs) => match self {
-                Value::U8(v) => Value::F64(v as f64 / rhs),
-                Value::U16(v) => Value::F64(v as f64 / rhs),
-                Value::U32(v) => Value::F64(v as f64 / rhs),
+                Value::U8(v) => Value::F64(f64::from(v) / rhs),
+                Value::U16(v) => Value::F64(f64::from(v) / rhs),
+                Value::U32(v) => Value::F64(f64::from(v) / rhs),
                 Value::U64(v) => Value::F64(v as f64 / rhs),
-                Value::I8(v) => Value::F64(v as f64 / rhs),
-                Value::I16(v) => Value::F64(v as f64 / rhs),
-                Value::I32(v) => Value::F64(v as f64 / rhs),
+                Value::I8(v) => Value::F64(f64::from(v) / rhs),
+                Value::I16(v) => Value::F64(f64::from(v) / rhs),
+                Value::I32(v) => Value::F64(f64::from(v) / rhs),
                 Value::I64(v) => Value::F64(v as f64 / rhs),
-                Value::F32(v) => Value::F64(v as f64 / rhs),
+                Value::F32(v) => Value::F64(f64::from(v) / rhs),
                 Value::F64(v) => Value::F64(v / rhs),
                 _ => self,
             },
@@ -41,15 +41,15 @@ impl Value {
         match o {
             None => self,
             Some(rhs) => match self {
-                Value::U8(v) => Value::F64(v as f64 - rhs),
-                Value::U16(v) => Value::F64(v as f64 - rhs),
-                Value::U32(v) => Value::F64(v as f64 - rhs),
+                Value::U8(v) => Value::F64(f64::from(v) - rhs),
+                Value::U16(v) => Value::F64(f64::from(v) - rhs),
+                Value::U32(v) => Value::F64(f64::from(v) - rhs),
                 Value::U64(v) => Value::F64(v as f64 - rhs),
-                Value::I8(v) => Value::F64(v as f64 - rhs),
-                Value::I16(v) => Value::F64(v as f64 - rhs),
-                Value::I32(v) => Value::F64(v as f64 - rhs),
+                Value::I8(v) => Value::F64(f64::from(v) - rhs),
+                Value::I16(v) => Value::F64(f64::from(v) - rhs),
+                Value::I32(v) => Value::F64(f64::from(v) - rhs),
                 Value::I64(v) => Value::F64(v as f64 - rhs),
-                Value::F32(v) => Value::F64(v as f64 - rhs),
+                Value::F32(v) => Value::F64(f64::from(v) - rhs),
                 Value::F64(v) => Value::F64(v - rhs),
                 _ => self,
             },
@@ -261,7 +261,7 @@ impl TryFrom<&Value> for u16 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::U8(v) => Ok(*v as u16),
+            Value::U8(v) => Ok(u16::from(*v)),
             Value::U16(v) => Ok(*v),
             _ => Err(ValueError {}),
         }
@@ -271,8 +271,8 @@ impl TryFrom<&Value> for u32 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::U8(v) => Ok(*v as u32),
-            Value::U16(v) => Ok(*v as u32),
+            Value::U8(v) => Ok(u32::from(*v)),
+            Value::U16(v) => Ok(u32::from(*v)),
             Value::U32(v) => Ok(*v),
             _ => Err(ValueError {}),
         }
@@ -282,9 +282,9 @@ impl TryFrom<&Value> for u64 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::U8(v) => Ok(*v as u64),
-            Value::U16(v) => Ok(*v as u64),
-            Value::U32(v) => Ok(*v as u64),
+            Value::U8(v) => Ok(u64::from(*v)),
+            Value::U16(v) => Ok(u64::from(*v)),
+            Value::U32(v) => Ok(u64::from(*v)),
             Value::U64(v) => Ok(*v),
             _ => Err(ValueError {}),
         }
@@ -303,7 +303,7 @@ impl TryFrom<&Value> for i16 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::I8(v) => Ok(*v as i16),
+            Value::I8(v) => Ok(i16::from(*v)),
             Value::I16(v) => Ok(*v),
             _ => Err(ValueError {}),
         }
@@ -313,8 +313,8 @@ impl TryFrom<&Value> for i32 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::I8(v) => Ok(*v as i32),
-            Value::I16(v) => Ok(*v as i32),
+            Value::I8(v) => Ok(i32::from(*v)),
+            Value::I16(v) => Ok(i32::from(*v)),
             Value::I32(v) => Ok(*v),
             _ => Err(ValueError {}),
         }
@@ -324,9 +324,9 @@ impl TryFrom<&Value> for i64 {
     type Error = ValueError;
     fn try_from(val: &Value) -> Result<Self, Self::Error> {
         match val {
-            Value::I8(v) => Ok(*v as i64),
-            Value::I16(v) => Ok(*v as i64),
-            Value::I32(v) => Ok(*v as i64),
+            Value::I8(v) => Ok(i64::from(*v)),
+            Value::I16(v) => Ok(i64::from(*v)),
+            Value::I32(v) => Ok(i64::from(*v)),
             Value::I64(v) => Ok(*v),
             _ => Err(ValueError {}),
         }

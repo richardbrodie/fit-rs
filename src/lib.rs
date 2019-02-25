@@ -4,7 +4,9 @@
 //!
 //! Simply call `FitFile::read` with a path to a fit file.
 
-#![allow(unused)]
+#[allow(clippy::all)]
+// #[deny(clippy::unreadable_literal)]
+// #![allow(unused)]
 use std::path::PathBuf;
 
 mod file;

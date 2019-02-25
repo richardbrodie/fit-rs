@@ -101,7 +101,6 @@ impl DataField {
             BaseType::STRING => {
                 let number_of_values = field_def.size / STRING_TYPE.byte_size;
                 let str_vec: Vec<u8> = (0..number_of_values)
-                    .into_iter()
                     .filter_map(|_| {
                         reader
                             .byte()
@@ -146,10 +145,7 @@ impl DataField {
 
         Self {
             id: field_def.field_def_number,
-            values: match vals.is_empty() {
-                true => None,
-                false => Some(vals),
-            },
+            values: if vals.is_empty() { None } else { Some(vals) },
         }
     }
 }
@@ -157,9 +153,10 @@ impl DataField {
 // private
 
 fn is_valid<T: PartialEq>(val: T, invalid: T) -> Option<T> {
-    match val == invalid {
-        true => None,
-        false => Some(val),
+    if val == invalid {
+        None
+    } else {
+        Some(val)
     }
 }
 

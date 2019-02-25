@@ -1,5 +1,4 @@
 use log::warn;
-use std::collections::HashMap;
 
 mod structs;
 mod types;
@@ -11,9 +10,9 @@ include!(concat!(env!("OUT_DIR"), "/message_definitions.rs"));
 include!(concat!(env!("OUT_DIR"), "/messages.rs"));
 
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
-const PSEUDO_EPOCH: u32 = 631065600;
+const PSEUDO_EPOCH: u32 = 631_065_600;
 
-pub fn new_record(num: &u16) -> Option<Box<dyn DefinedMessageType>> {
+pub fn new_record(num: u16) -> Option<Box<dyn DefinedMessageType>> {
     message_name(num).and_then(|name| message(name))
 }
 
@@ -46,7 +45,7 @@ fn uint_sint(val: &Value, field: &DefinedMessageField) -> Option<Value> {
 }
 fn manufacturer(val: &Value) -> Option<Value> {
     if let Value::U16(inner) = val {
-        types::type_value("manufacturer", &(*inner as u32)).map(|s| s.into())
+        types::type_value("manufacturer", u32::from(*inner)).map(|s| s.into())
     } else {
         warn!("wrong type for manfacturer: {:?}", val);
         None
@@ -62,7 +61,7 @@ fn date_time(val: &Value) -> Option<Value> {
 }
 fn device_index(val: &Value) -> Option<Value> {
     if let Value::U8(inner) = val {
-        types::type_value("device_index", &(*inner as u32)).map(|s| s.into())
+        types::type_value("device_index", u32::from(*inner)).map(|s| s.into())
     } else {
         warn!("wrong type for device index: {:?}", val);
         None
@@ -70,7 +69,7 @@ fn device_index(val: &Value) -> Option<Value> {
 }
 fn battery_status(val: &Value) -> Option<Value> {
     if let Value::U8(inner) = *val {
-        types::type_value("battery_status", &(inner as u32)).map(|s| s.into())
+        types::type_value("battery_status", u32::from(inner)).map(|s| s.into())
     } else {
         warn!("wrong type for battery_status: {:?}", val);
         None
@@ -78,7 +77,7 @@ fn battery_status(val: &Value) -> Option<Value> {
 }
 fn message_index(val: &Value) -> Option<Value> {
     if let Value::U16(inner) = val {
-        types::type_value("message_index", &(*inner as u32)).map(|s| s.into())
+        types::type_value("message_index", u32::from(*inner)).map(|s| s.into())
     } else {
         warn!("wrong type for message_index: {:?}", val);
         None
@@ -95,7 +94,7 @@ fn local_date_time(val: &Value) -> Option<Value> {
 
 fn catchall(val: &Value, kind: &str) -> Option<Value> {
     if let Value::Enum(inner) = val {
-        types::type_value(kind, &(*inner as u32)).map(|e| e.into())
+        types::type_value(kind, u32::from(*inner)).map(|e| e.into())
     } else {
         warn!("wrong type for `{}`: {:?}", kind, &val);
         None
@@ -109,13 +108,13 @@ mod tests {
 
     #[test]
     fn it_gets_message_name() {
-        let t = message_name(&1);
+        let t = message_name(1);
         assert_eq!(t, Some("capabilities"));
     }
 
     #[test]
     fn it_gets_type() {
-        let t = type_value("file", &4);
+        let t = type_value("file", 4);
         assert_eq!(t, Some("activity"));
     }
 

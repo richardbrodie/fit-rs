@@ -34,7 +34,7 @@ impl<'a> std::fmt::Debug for FieldNameAndValue<'a> {
 }
 
 /// A trait representing all the different message types as defined in the FIT SDK.
-pub trait DefinedMessageType: Sync + Send {
+pub trait DefinedMessageType {
     // public
     fn new() -> Self
     where
@@ -46,11 +46,10 @@ pub trait DefinedMessageType: Sync + Send {
     fn name(&self) -> &str;
 
     fn process_raw_value(&mut self, num: u16, val: &Value) {
-        match self.defined_message_field(num) {
-            Some(field) => {
-                convert_value(val, field).map(|v| self.write_value(num, v));
+        if let Some(field) = self.defined_message_field(num) {
+            if let Some(v) = convert_value(val, field) {
+                self.write_value(num, v)
             }
-            None => (),
         }
     }
 

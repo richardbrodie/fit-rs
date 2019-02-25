@@ -3,8 +3,8 @@ use super::data_field::DataField;
 use crate::messages::{new_record, DefinedMessageType};
 use crate::reader::{Endian, Reader};
 
-const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10000000;
-const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00011111;
+const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10_000_000;
+const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 
 #[derive(Debug)]
 pub struct DefinitionRecord {
@@ -28,7 +28,6 @@ impl DefinitionRecord {
         let global_message_num = reader.u16(&endian).unwrap();
         let number_of_fields = reader.byte().unwrap();
         let field_defs: Vec<_> = (0..number_of_fields)
-            .into_iter()
             .map(|_| {
                 let buf = reader.bytes(3).unwrap();
                 FieldDefinition::new(&buf)
@@ -36,28 +35,27 @@ impl DefinitionRecord {
             .collect();
         DefinitionRecord {
             architecture: endian,
-            global_message_num: global_message_num,
-            number_of_fields: number_of_fields,
-            field_defs: field_defs,
+            global_message_num,
+            number_of_fields,
+            field_defs,
             dev_field_defs: Vec::new(),
         }
     }
     pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
-        let mut raw_fields: Vec<_> = self
+        let raw_fields: Vec<_> = self
             .field_defs
             .iter()
             .map(|fd| DataField::new(reader, &self.architecture, &fd))
             .collect();
-        new_record(&self.global_message_num).and_then(|mut r| {
+        new_record(self.global_message_num).and_then(|mut r| {
             raw_fields.into_iter().for_each(|df| {
                 if let Some(vals) = df.values {
                     let val = &vals[0];
                     r.process_raw_value(df.id, &val);
                 }
             });
-            return Some(r);
-        });
-        None
+            Some(r)
+        })
     }
 }
 
@@ -72,12 +70,12 @@ impl FieldDefinition {
     fn new(buf: &[u8]) -> Self {
         let base_num = buf[2] & FIELD_DEFINITION_BASE_NUMBER;
         let endianness = (buf[2] & FIELD_DEFINITION_ARCHITECTURE) == FIELD_DEFINITION_ARCHITECTURE;
-        return Self {
+        Self {
             field_def_number: buf[0].into(),
             size: buf[1],
-            endianness: endianness,
+            endianness,
             base_type: BaseType::get(base_num),
-        };
+        }
     }
 }
 
@@ -85,7 +83,6 @@ impl FieldDefinition {
 mod tests {
     use super::DefinitionRecord;
     use crate::tests::fit_setup;
-    use crate::Value;
 
     #[test]
     fn it_reads_a_definition() {
