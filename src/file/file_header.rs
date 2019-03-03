@@ -1,5 +1,5 @@
 use crate::reader::{Endian, Reader};
-use std::io::Error;
+use crate::Error;
 
 #[derive(Debug)]
 pub struct FileHeader {
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn it_reads_fileheader() {
-        let mut reader = fit_setup();
+        let mut reader = fit_setup().unwrap();
         let fileheader = FileHeader::new(&mut reader).unwrap();
         assert_eq!(fileheader.num_record_bytes, 191_877);
     }

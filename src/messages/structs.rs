@@ -79,9 +79,12 @@ pub trait DefinedMessageType {
     fn all_values(&self) -> Vec<FieldNameAndValue> {
         self.inner()
             .iter()
-            .map(|(k, v)| FieldNameAndValue {
-                name: self.defined_message_field(*k).unwrap().name,
-                value: Some(v),
+            .filter_map(|(k, v)| match self.defined_message_field(*k) {
+                Some(f) => Some(FieldNameAndValue {
+                    name: f.name,
+                    value: Some(v),
+                }),
+                None => None,
             })
             .collect()
     }

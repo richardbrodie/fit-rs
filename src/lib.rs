@@ -4,16 +4,17 @@
 //!
 //! Simply call `FitFile::read` with a path to a fit file.
 
+#![allow(unused)]
 #[allow(clippy::all)]
-// #[deny(clippy::unreadable_literal)]
-// #![allow(unused)]
 use std::path::PathBuf;
 
+mod error;
 mod file;
 mod messages;
 mod reader;
 mod value;
 
+pub use self::error::{Error, ErrorKind};
 pub use self::file::FitFile;
 pub use self::messages::{DefinedMessageType, FieldNameAndValue};
 pub use self::value::{TryFrom, Value, ValueError};
@@ -29,7 +30,7 @@ pub use self::value::{TryFrom, Value, ValueError};
 /// let filepath = PathBuf::from("fits/garmin_1000.fit");
 /// let _ = FitFile::read(filepath);
 /// ```
-pub fn read(path: PathBuf) -> FitFile {
+pub fn read(path: PathBuf) -> Result<FitFile, Error> {
     file::FitFile::read(path)
 }
 
@@ -39,7 +40,7 @@ pub mod tests {
     use crate::reader::Reader;
     use std::path::PathBuf;
 
-    pub fn fit_setup() -> Reader {
+    pub fn fit_setup() -> Result<Reader, crate::Error> {
         let path = PathBuf::from("fits/garmin_1000.fit");
         Reader::new(path)
     }

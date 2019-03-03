@@ -17,8 +17,8 @@ struct RecordHeaderByte {
     byte: u8,
 }
 impl RecordHeaderByte {
-    fn new(reader: &mut Reader) -> Result<Self, ()> {
-        reader.byte().map(|b| Self { byte: b }).map_err(|_| ())
+    fn new(reader: &mut Reader) -> Result<Self, crate::Error> {
+        reader.byte().map(|b| Self { byte: b })
     }
     fn is_definition(&self) -> bool {
         (self.byte & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK
@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn it_reads_header_byte() {
-        let mut reader = fit_setup();
+        let mut reader = fit_setup().unwrap();
         reader.skip(14); // FileHeader
         let header_byte = RecordHeaderByte::new(&mut reader).unwrap();
         assert_eq!(header_byte.is_definition(), true);

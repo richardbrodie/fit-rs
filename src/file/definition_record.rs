@@ -2,6 +2,7 @@ use super::base_type::BaseType;
 use super::data_field::DataField;
 use crate::messages::{new_record, DefinedMessageType};
 use crate::reader::{Endian, Reader};
+use crate::Error;
 
 const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10_000_000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
@@ -15,7 +16,7 @@ pub struct DefinitionRecord {
     dev_field_defs: Vec<u8>,
 }
 impl DefinitionRecord {
-    pub fn new(reader: &mut Reader, dev_fields: bool) -> Self {
+    pub fn new(reader: &mut Reader, dev_fields: bool) -> Result<Self, Error> {
         if dev_fields {
             panic!("file has developer fields!")
         }
@@ -23,23 +24,20 @@ impl DefinitionRecord {
         let endian = match reader.byte() {
             Ok(1) => Endian::Big,
             Ok(0) => Endian::Little,
-            _ => panic!("Error when trying to read endianness: value was not 1 or 0"),
+            _ => Err(crate::ErrorKind::UnexpectedValue)?,
         };
-        let global_message_num = reader.u16(&endian).unwrap();
-        let number_of_fields = reader.byte().unwrap();
-        let field_defs: Vec<_> = (0..number_of_fields)
-            .map(|_| {
-                let buf = reader.bytes(3).unwrap();
-                FieldDefinition::new(&buf)
+        let global_message_num = reader.u16(&endian)?;
+        let number_of_fields = reader.byte()?;
+        (0..number_of_fields)
+            .map(|_| reader.bytes(3).map(|buf| FieldDefinition::new(&buf)))
+            .collect::<Result<Vec<FieldDefinition>, Error>>()
+            .map(|field_defs| DefinitionRecord {
+                architecture: endian,
+                global_message_num,
+                number_of_fields,
+                field_defs,
+                dev_field_defs: Vec::new(),
             })
-            .collect();
-        DefinitionRecord {
-            architecture: endian,
-            global_message_num,
-            number_of_fields,
-            field_defs,
-            dev_field_defs: Vec::new(),
-        }
     }
     pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
         let raw_fields: Vec<_> = self
@@ -86,10 +84,10 @@ mod tests {
 
     #[test]
     fn it_reads_a_definition() {
-        let mut reader = fit_setup();
+        let mut reader = fit_setup().unwrap();
         reader.skip(14); // FileHeader
         reader.skip(1); // HeaderByte
-        let definition = DefinitionRecord::new(&mut reader, false);
+        let definition = DefinitionRecord::new(&mut reader, false).unwrap();
         // now 41
         assert_eq!(definition.number_of_fields, 7);
     }

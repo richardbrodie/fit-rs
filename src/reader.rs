@@ -1,5 +1,7 @@
+use crate::Error;
+use failure::ResultExt;
 use std::fs::File;
-use std::io::{BufReader, Error, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -12,10 +14,10 @@ pub struct Reader {
     pub inner: BufReader<File>,
 }
 impl Reader {
-    pub fn new(filename: PathBuf) -> Self {
-        let file = File::open(filename).unwrap();
+    pub fn new(filename: PathBuf) -> Result<Self, Error> {
+        let file = File::open(filename)?;
         let reader = BufReader::new(file);
-        Reader { inner: reader }
+        Ok(Reader { inner: reader })
     }
     pub fn byte(&mut self) -> Result<u8, Error> {
         let mut buf = [0; 1];
@@ -101,6 +103,6 @@ impl Reader {
         }
     }
     pub fn pos(&mut self) -> Result<u64, Error> {
-        self.inner.seek(SeekFrom::Current(0))
+        Ok(self.inner.seek(SeekFrom::Current(0))?)
     }
 }

@@ -10,11 +10,12 @@ repository = "https://github.com/richardbrodie/fit-rs"
 build = "build.rs"
 
 [dependencies]
-log = "0.4"
+log = "^0.4"
+failure = "^0.1.5"
 
 [dev-dependencies]
-env_logger = "0.6"
-criterion = "0.2"
+env_logger = "^0.6"
+criterion = "^0.2"
 
 [build-dependencies]
 heck = "^0.3"

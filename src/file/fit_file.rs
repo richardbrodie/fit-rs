@@ -2,7 +2,7 @@ use super::definition_record::DefinitionRecord;
 use super::file_header::FileHeader;
 use super::RecordHeaderByte;
 use crate::reader::Reader;
-use crate::DefinedMessageType;
+use crate::{DefinedMessageType, Error};
 
 use log::warn;
 use std::collections::HashMap;
@@ -82,21 +82,19 @@ impl FitFile {
     ///
     ///
     /// ```
-    pub fn read(path: PathBuf) -> FitFile {
-        let mut reader = Reader::new(path);
+    pub fn read(path: PathBuf) -> Result<FitFile, Error> {
+        let mut reader = Reader::new(path)?;
         let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
         let mut records: Vec<MessageBox> = Vec::with_capacity(5000);
 
-        let header = FileHeader::new(&mut reader).unwrap();
+        let header = FileHeader::new(&mut reader)?;
 
         let file_length = u64::from(header.file_length());
-        while reader.pos().unwrap() < file_length {
+        while reader.pos()? < file_length {
             if let Ok(h) = RecordHeaderByte::new(&mut reader) {
                 if h.is_definition() {
-                    definitions.insert(
-                        h.local_msg_number(),
-                        DefinitionRecord::new(&mut reader, h.has_developer_fields()),
-                    );
+                    let def_record = DefinitionRecord::new(&mut reader, h.has_developer_fields())?;
+                    definitions.insert(h.local_msg_number(), def_record);
                 } else {
                     definitions
                         .get(&h.local_msg_number())
@@ -112,9 +110,9 @@ impl FitFile {
                 }
             }
         }
-        FitFile {
+        Ok(FitFile {
             _file_header: header,
             records,
-        }
+        })
     }
 }
