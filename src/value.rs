@@ -1,10 +1,11 @@
-#![warn(unstable_name_collisions)]
+use smallvec::SmallVec;
 
 /// The container type for the different values.
-#[derive(PartialEq, Clone)]
+#[derive(Clone)]
 pub enum Value {
+    Empty,
     Enum(u8),
-    Str(String),
+    String(String),
     U8(u8),
     U16(u16),
     U32(u32),
@@ -16,6 +17,9 @@ pub enum Value {
     F32(f32),
     F64(f64),
     Time(u32),
+    Array(Vec<Value>),
+    // Array([Value; 16]),
+    // Array(SmallVec<[Value; 16]>),
 }
 
 impl Value {
@@ -56,70 +60,186 @@ impl Value {
         }
     }
 
-    pub fn is_str(&self) -> bool {
-        match self {
-            Value::Str(_s) => true,
-            _ => false,
+    // pub fn is_str(&self) -> bool {
+    //     match self {
+    //         Value::Str(_s) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_u8(&self) -> bool {
+    //     match self {
+    //         Value::U8(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_u16(&self) -> bool {
+    //     match self {
+    //         Value::U16(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_u32(&self) -> bool {
+    //     match self {
+    //         Value::U32(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_u64(&self) -> bool {
+    //     match self {
+    //         Value::U64(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_i8(&self) -> bool {
+    //     match self {
+    //         Value::I8(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_i16(&self) -> bool {
+    //     match self {
+    //         Value::I16(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_i32(&self) -> bool {
+    //     match self {
+    //         Value::I32(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_i64(&self) -> bool {
+    //     match self {
+    //         Value::I64(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_f32(&self) -> bool {
+    //     match self {
+    //         Value::F32(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+    // pub fn is_f64(&self) -> bool {
+    //     match self {
+    //         Value::F64(_v) => true,
+    //         _ => false,
+    //     }
+    // }
+
+    pub fn u8(&self) -> u8 {
+        if let Value::U8(i) = self {
+            *i
+        } else {
+            panic!("not a u8")
         }
     }
-    pub fn is_u8(&self) -> bool {
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
         match self {
-            Value::U8(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_u16(&self) -> bool {
-        match self {
-            Value::U16(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_u32(&self) -> bool {
-        match self {
-            Value::U32(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_u64(&self) -> bool {
-        match self {
-            Value::U64(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_i8(&self) -> bool {
-        match self {
-            Value::I8(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_i16(&self) -> bool {
-        match self {
-            Value::I16(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_i32(&self) -> bool {
-        match self {
-            Value::I32(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_i64(&self) -> bool {
-        match self {
-            Value::I64(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_f32(&self) -> bool {
-        match self {
-            Value::F32(_v) => true,
-            _ => false,
-        }
-    }
-    pub fn is_f64(&self) -> bool {
-        match self {
-            Value::F64(_v) => true,
-            _ => false,
+            Value::Empty => {
+                if let Value::Empty = other {
+                    true
+                } else {
+                    panic!("failed comparing Empty with {:?}", other)
+                }
+            }
+            Value::U8(v) => {
+                if let Value::U8(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing U8 {:?} with {:?}", self, other)
+                }
+            }
+            Value::U16(v) => {
+                if let Value::U16(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing U16 {:?} with {:?}", self, other)
+                }
+            }
+            Value::U32(v) => {
+                if let Value::U32(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing U32 {:?} with {:?}", self, other)
+                }
+            }
+            Value::U64(v) => {
+                if let Value::U64(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing U64 {:?} with {:?}", self, other)
+                }
+            }
+            Value::I8(v) => {
+                if let Value::I8(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing I8 {:?} with {:?}", self, other)
+                }
+            }
+            Value::I16(v) => {
+                if let Value::I16(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing I16 {:?} with {:?}", self, other)
+                }
+            }
+            Value::I32(v) => {
+                if let Value::I32(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing I32 {:?} with {:?}", self, other)
+                }
+            }
+            Value::I64(v) => {
+                if let Value::I64(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing I64 {:?} with {:?}", self, other)
+                }
+            }
+            Value::F32(v) => match other {
+                Value::U32(ov) => {
+                    let f = *ov as f32;
+                    *v == f
+                }
+                Value::F32(f) => v == f,
+                _ => panic!("failed comparing F32 {:?} with {:?}", self, other),
+            },
+            Value::F64(v) => match other {
+                Value::U64(ov) => {
+                    let f = *ov as f64;
+                    *v == f
+                }
+                Value::F64(f) => v == f,
+                _ => panic!("failed comparing F64 {:?} with {:?}", self, other),
+            },
+            Value::Time(v) => {
+                if let Value::Time(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing Time {:?} with {:?}", self, other)
+                }
+            }
+            Value::String(v) => {
+                if let Value::String(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing Str {:?} with {:?}", self, other)
+                }
+            }
+            Value::Enum(v) => {
+                if let Value::Enum(ov) = other {
+                    v == ov
+                } else {
+                    panic!("failed comparing Enum {:?} with {:?}", self, other)
+                }
+            }
+            Value::Array(v) => true,
         }
     }
 }
@@ -127,6 +247,7 @@ impl Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Value::Empty => write!(f, "Empty"),
             Value::U8(v) => write!(f, "{}", v),
             Value::U16(v) => write!(f, "{}", v),
             Value::U32(v) => write!(f, "{}", v),
@@ -138,14 +259,16 @@ impl std::fmt::Display for Value {
             Value::F32(v) => write!(f, "{}", v),
             Value::F64(v) => write!(f, "{}", v),
             Value::Time(v) => write!(f, "{}", v),
-            Value::Str(v) => write!(f, "\"{}\"", v),
+            Value::String(v) => write!(f, "\"{}\"", v),
             Value::Enum(v) => write!(f, "\"{}\"", v),
+            Value::Array(v) => write!(f, "\"{:?}\"", v),
         }
     }
 }
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Value::Empty => write!(f, "Empty"),
             Value::U8(v) => write!(f, "{} /u8", v),
             Value::U16(v) => write!(f, "{} /u16", v),
             Value::U32(v) => write!(f, "{} /u32", v),
@@ -157,8 +280,9 @@ impl std::fmt::Debug for Value {
             Value::F32(v) => write!(f, "{} /f32", v),
             Value::F64(v) => write!(f, "{} /f64", v),
             Value::Time(v) => write!(f, "{} /time", v),
-            Value::Str(v) => write!(f, "\"{}\" /str", v),
+            Value::String(v) => write!(f, "\"{}\" /str", v),
             Value::Enum(v) => write!(f, "\"{}\" /enum", v),
+            Value::Array(v) => write!(f, "\"{:?}\" /arr", v),
         }
     }
 }
@@ -215,139 +339,26 @@ impl From<f64> for Value {
 }
 impl From<&str> for Value {
     fn from(f: &str) -> Self {
-        Value::Str(f.to_owned())
+        Value::String(f.to_owned())
     }
 }
-
-/// An error type produced by the TryFrom trait
-#[derive(Debug)]
-pub struct ValueError {}
-
-/// A flexible and safe method of extracting the internal value from a Value enum.
-///
-/// It will return a ValueError if the internal value cannot be safely cast into the desired type.
-///
-/// # Example
-///
-/// ```rust
-/// use fit::{TryFrom, Value};
-///
-/// let val = Value::U8(127);
-/// let target = u16::try_from(&val);
-/// assert!(target.is_ok());
-///
-/// let val = Value::U32(127);
-/// let target = u16::try_from(&val);
-/// assert!(target.is_err());
-/// ```
-///
-pub trait TryFrom<T> {
-    type Error;
-    fn try_from(value: T) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-}
-
-impl TryFrom<&Value> for u8 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::U8(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
+impl From<String> for Value {
+    fn from(f: String) -> Self {
+        Value::String(f)
     }
 }
-impl TryFrom<&Value> for u16 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::U8(v) => Ok(u16::from(*v)),
-            Value::U16(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
+impl From<&[Value]> for Value {
+    fn from(v: &[Value]) -> Self {
+        Value::Array(v.to_vec())
     }
 }
-impl TryFrom<&Value> for u32 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::U8(v) => Ok(u32::from(*v)),
-            Value::U16(v) => Ok(u32::from(*v)),
-            Value::U32(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
+impl From<Vec<Value>> for Value {
+    fn from(v: Vec<Value>) -> Self {
+        Value::Array(v)
     }
 }
-impl TryFrom<&Value> for u64 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::U8(v) => Ok(u64::from(*v)),
-            Value::U16(v) => Ok(u64::from(*v)),
-            Value::U32(v) => Ok(u64::from(*v)),
-            Value::U64(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
-    }
-}
-impl TryFrom<&Value> for i8 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::I8(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
-    }
-}
-impl TryFrom<&Value> for i16 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::I8(v) => Ok(i16::from(*v)),
-            Value::I16(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
-    }
-}
-impl TryFrom<&Value> for i32 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::I8(v) => Ok(i32::from(*v)),
-            Value::I16(v) => Ok(i32::from(*v)),
-            Value::I32(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
-    }
-}
-impl TryFrom<&Value> for i64 {
-    type Error = ValueError;
-    fn try_from(val: &Value) -> Result<Self, Self::Error> {
-        match val {
-            Value::I8(v) => Ok(i64::from(*v)),
-            Value::I16(v) => Ok(i64::from(*v)),
-            Value::I32(v) => Ok(i64::from(*v)),
-            Value::I64(v) => Ok(*v),
-            _ => Err(ValueError {}),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_casts_down() {
-        let v = Value::U8(127);
-        let t = u16::try_from(&v);
-        assert!(t.is_ok());
-    }
-
-    #[test]
-    fn it_fails_casting_up() {
-        let v = Value::U32(127);
-        let t = u16::try_from(&v);
-        assert!(t.is_err());
+impl From<SmallVec<[Value; 16]>> for Value {
+    fn from(v: SmallVec<[Value; 16]>) -> Self {
+        Value::Array(v.into_vec())
     }
 }

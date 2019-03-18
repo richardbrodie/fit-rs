@@ -15,9 +15,9 @@ mod reader;
 mod value;
 
 pub use self::error::{Error, ErrorKind};
-pub use self::file::FitFile;
+pub use self::file::{DataField, FitFile};
 pub use self::messages::{DefinedMessageType, FieldNameAndValue};
-pub use self::value::{TryFrom, Value, ValueError};
+pub use self::value::Value;
 
 /// Reads the file and returns a FitFile.
 ///
@@ -68,12 +68,11 @@ pub mod tests {
     #[test]
     fn it_reads_wahoo_file() {
         let filepath = PathBuf::from("fits/wahoo.fit");
-        let _ = FitFile::read(filepath);
+        assert!(FitFile::read(filepath).is_ok());
     }
     #[test]
-    #[should_panic]
     fn it_panics_reading_wahoo_file_with_developer_fields() {
         let filepath = PathBuf::from("fits/wahoo_dev_fields.fit");
-        let _ = FitFile::read(filepath);
+        assert!(FitFile::read(filepath).is_err());
     }
 }

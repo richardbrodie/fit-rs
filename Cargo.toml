@@ -12,6 +12,7 @@ build = "build.rs"
 [dependencies]
 log = "^0.4"
 failure = "^0.1.5"
+smallvec = ""
 
 [dev-dependencies]
 env_logger = "^0.6"
