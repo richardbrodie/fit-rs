@@ -6,6 +6,8 @@ mod file_header;
 mod fit_file;
 
 pub use self::data_field::DataField;
+pub use self::definition_record::DefinitionRecord;
+pub use self::file_header::FileHeader;
 pub use self::fit_file::FitFile;
 use crate::reader::Reader;
 
@@ -14,20 +16,20 @@ const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
 #[derive(Debug)]
-struct RecordHeaderByte {
+pub struct RecordHeaderByte {
     byte: u8,
 }
 impl RecordHeaderByte {
-    fn new(reader: &mut Reader) -> Result<Self, crate::Error> {
+    pub fn new(reader: &mut Reader) -> Result<Self, crate::Error> {
         reader.byte().map(|b| Self { byte: b })
     }
-    fn is_definition(&self) -> bool {
+    pub fn is_definition(&self) -> bool {
         (self.byte & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK
     }
-    fn has_developer_fields(&self) -> bool {
+    pub fn has_developer_fields(&self) -> bool {
         (self.byte & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK
     }
-    fn local_msg_number(&self) -> u8 {
+    pub fn local_msg_number(&self) -> u8 {
         self.byte & LOCAL_MESSAGE_NUMBER_MASK
     }
 }

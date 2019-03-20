@@ -18,7 +18,7 @@ fn main() {
 }
 
 fn read_types_csv() {
-    let out_path = Path::new(&env::var("OUT_DIR").unwrap()).join("types.rs");
+    let out_path = Path::new(&env::var("OUT_DIR").unwrap()).join("sdk_types.rs");
     let mut out_file = BufWriter::new(File::create(&out_path).unwrap());
 
     let mut in_file = File::open("types.semi.csv").unwrap();
@@ -81,8 +81,9 @@ fn read_messages_csv() {
 
     write!(
         &mut msg_file,
-        "fn message(msg: &str) -> Option<Box<dyn DefinedMessageType>> {{\n
-            match msg {{\n"
+        r#"fn message(msg: &str) -> Option<Box<dyn DefinedMessage>> {{
+    match msg {{
+"#
     )
     .unwrap();
 
@@ -109,7 +110,7 @@ fn read_messages_csv() {
                 format!(
                     r#"#[derive(Debug)]
 pub struct {0} {{ values: Vec<(u16, Value)> }}
-impl DefinedMessageType for {0} {{
+impl DefinedMessage for {0} {{
     fn new() -> Self {{
         Self {{ values: Vec::with_capacity(16) }} 
     }}
@@ -134,7 +135,7 @@ impl DefinedMessageType for {0} {{
                 &mut msg_file,
                 "{}",
                 format!(
-                    "{:?} => Some(Box::new({}::new())),\n",
+                    "           {:?} => Some(Box::new({}::new())),\n",
                     name,
                     name.to_camel_case()
                 )
@@ -176,7 +177,7 @@ impl DefinedMessageType for {0} {{
     }
     write!(
         &mut def_file,
-        "            _ => None,\n        }}\n    }}\n}}\n"
+        "            _ => None,\n        }}\n    }}\n}}\n\n"
     )
     .unwrap();
     write!(

@@ -1,10 +1,13 @@
-use log::warn;
+use crate::Value;
 
-mod structs;
+mod defined_message;
+mod defined_message_field;
+mod field;
 mod types;
-pub use self::structs::{DefinedMessageField, DefinedMessageType, FieldNameAndValue};
 pub use self::types::{message_name, type_value};
-use crate::value::Value;
+pub use defined_message::DefinedMessage;
+pub use defined_message_field::DefinedMessageField;
+pub use field::Field;
 
 include!(concat!(env!("OUT_DIR"), "/message_definitions.rs"));
 include!(concat!(env!("OUT_DIR"), "/messages.rs"));
@@ -12,7 +15,7 @@ include!(concat!(env!("OUT_DIR"), "/messages.rs"));
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
 
-pub fn new_record(num: u16) -> Option<Box<dyn DefinedMessageType>> {
+pub fn new_record(num: u16) -> Option<Box<dyn DefinedMessage>> {
     message_name(num).and_then(|name| message(name))
 }
 

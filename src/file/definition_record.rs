@@ -1,6 +1,4 @@
 use super::base_type::BaseType;
-use super::data_field::DataField;
-use crate::messages::{new_record, DefinedMessageType};
 use crate::reader::{Endian, Reader};
 use crate::Error;
 
@@ -16,7 +14,7 @@ pub struct DefinitionRecord {
     dev_field_defs: Vec<u8>,
 }
 impl DefinitionRecord {
-    pub fn new(reader: &mut Reader, dev_fields: bool) -> Result<Self, Error> {
+    pub fn new(reader: &mut Reader, _dev_fields: bool) -> Result<Self, Error> {
         reader.skip(1); // skip reserved byte
         let endian = match reader.byte() {
             Ok(1) => Endian::Big,
@@ -35,25 +33,6 @@ impl DefinitionRecord {
                 field_defs,
                 dev_field_defs: Vec::new(),
             })
-    }
-    pub fn read_data_record(&self, reader: &mut Reader) -> Option<Box<dyn DefinedMessageType>> {
-        let raw_fields: Vec<_> = self
-            .field_defs
-            .iter()
-            .map(|fd| DataField::new(reader, &self.architecture, &fd))
-            .collect();
-        new_record(self.global_message_num).and_then(|mut r| {
-            raw_fields.into_iter().for_each(|df| {
-                // if let Some(vals) = df.values {
-                //     let val = &vals[0];
-                //     r.process_raw_value(df.id, &val);
-                // }
-                if df.value.is_some() {
-                    r.process_raw_value(&df);
-                }
-            });
-            Some(r)
-        })
     }
 }
 

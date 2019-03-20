@@ -1,16 +1,11 @@
-use super::{definition_record::DefinitionRecord, file_header::FileHeader, RecordHeaderByte};
-use crate::reader::Reader;
-use crate::{DefinedMessageType, Error};
-
-use log::warn;
-use std::{collections::HashMap, path::PathBuf};
-
-type MessageBox = Box<dyn DefinedMessageType>;
+use super::file_header::FileHeader;
+use crate::DefinedMessage;
+use std::collections::HashMap;
 
 /// An iterator over the parsed Records
 pub struct MessageIterator<'a> {
     i: usize,
-    v: &'a Vec<MessageBox>,
+    v: &'a Vec<Box<dyn DefinedMessage>>,
 }
 impl<'a> MessageIterator<'a> {
     pub fn filter_name(self, name: &'a str) -> FilterMessageIterator<'a, Self> {
@@ -18,7 +13,7 @@ impl<'a> MessageIterator<'a> {
     }
 }
 impl<'a> Iterator for MessageIterator<'a> {
-    type Item = &'a MessageBox;
+    type Item = &'a Box<dyn DefinedMessage>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.v.get(self.i) {
@@ -34,7 +29,9 @@ pub struct FilterMessageIterator<'a, MessageIterator> {
     k: &'a str,
     i: MessageIterator,
 }
-impl<'a, I: Iterator<Item = &'a MessageBox>> Iterator for FilterMessageIterator<'a, I> {
+impl<'a, I: Iterator<Item = &'a Box<dyn DefinedMessage>>> Iterator
+    for FilterMessageIterator<'a, I>
+{
     type Item = I::Item;
 
     fn next(&mut self) -> Option<I::Item> {
@@ -48,8 +45,8 @@ impl<'a, I: Iterator<Item = &'a MessageBox>> Iterator for FilterMessageIterator<
 }
 /// A wrapper around the sequence of Records parsed
 pub struct FitFile {
-    _file_header: FileHeader,
-    records: Vec<MessageBox>,
+    pub file_header: FileHeader,
+    pub records: Vec<Box<dyn DefinedMessage>>,
 }
 impl FitFile {
     /// Return a summary of parsed messages
@@ -69,47 +66,5 @@ impl FitFile {
             i: 0,
             v: &self.records,
         }
-    }
-
-    /// Return the name and value of a specific field number
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    ///
-    ///
-    /// ```
-    pub fn read(path: PathBuf) -> Result<FitFile, Error> {
-        let mut reader = Reader::new(path)?;
-        let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-        let mut records: Vec<MessageBox> = Vec::new();
-
-        let header = FileHeader::new(&mut reader)?;
-
-        let file_length = u64::from(header.file_length());
-        loop {
-            let h = RecordHeaderByte::new(&mut reader)?;
-            if h.has_developer_fields() {
-                Err(crate::ErrorKind::HasDeveloperFields)?
-            } else if h.is_definition() {
-                DefinitionRecord::new(&mut reader, h.has_developer_fields())
-                    .map(|def| definitions.insert(h.local_msg_number(), def));
-            } else {
-                let def = definitions
-                    .get(&h.local_msg_number())
-                    .ok_or(crate::ErrorKind::MissingDefinition(h.local_msg_number()))?;
-                def.read_data_record(&mut reader).map_or_else(
-                    || warn!(":: no record found for {}", def.global_message_num),
-                    |record| records.push(record),
-                );
-            }
-            if reader.pos()? >= file_length {
-                break;
-            }
-        }
-        Ok(FitFile {
-            _file_header: header,
-            records,
-        })
     }
 }

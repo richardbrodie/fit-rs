@@ -1,4 +1,4 @@
-include!(concat!(env!("OUT_DIR"), "/types.rs"));
+include!(concat!(env!("OUT_DIR"), "/sdk_types.rs"));
 
 pub fn message_name(key: u16) -> Option<&'static str> {
     type_value("mesg_num", u32::from(key))

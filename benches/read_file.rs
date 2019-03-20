@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn read_file() {
     let filepath = PathBuf::from("fits/garmin_1000.fit");
-    let _ = fit::FitFile::read(filepath);
+    let _ = fit::read(filepath);
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
