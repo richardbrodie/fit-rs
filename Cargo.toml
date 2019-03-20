@@ -12,7 +12,6 @@ build = "build.rs"
 [dependencies]
 log = "^0.4"
 failure = "^0.1.5"
-smallvec = ""
 
 [dev-dependencies]
 env_logger = "^0.6"
@@ -21,10 +20,6 @@ criterion = "^0.2"
 [build-dependencies]
 heck = "^0.3"
 csv = "^1.0"
-
-[profile.release]
-codegen-units = 1
-incremental = false
 
 [[example]]
 name = "show_message_counts"

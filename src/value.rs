@@ -1,9 +1,6 @@
-use smallvec::SmallVec;
-
 /// The container type for the different values.
 #[derive(Clone)]
 pub enum Value {
-    Empty,
     Enum(u8),
     String(String),
     U8(u8),
@@ -18,8 +15,6 @@ pub enum Value {
     F64(f64),
     Time(u32),
     Array(Vec<Value>),
-    // Array([Value; 16]),
-    // Array(SmallVec<[Value; 16]>),
 }
 
 impl Value {
@@ -139,13 +134,6 @@ impl Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
         match self {
-            Value::Empty => {
-                if let Value::Empty = other {
-                    true
-                } else {
-                    panic!("failed comparing Empty with {:?}", other)
-                }
-            }
             Value::U8(v) => {
                 if let Value::U8(ov) = other {
                     v == ov
@@ -247,7 +235,6 @@ impl PartialEq for Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Value::Empty => write!(f, "Empty"),
             Value::U8(v) => write!(f, "{}", v),
             Value::U16(v) => write!(f, "{}", v),
             Value::U32(v) => write!(f, "{}", v),
@@ -268,7 +255,6 @@ impl std::fmt::Display for Value {
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Value::Empty => write!(f, "Empty"),
             Value::U8(v) => write!(f, "{} /u8", v),
             Value::U16(v) => write!(f, "{} /u16", v),
             Value::U32(v) => write!(f, "{} /u32", v),
@@ -355,10 +341,5 @@ impl From<&[Value]> for Value {
 impl From<Vec<Value>> for Value {
     fn from(v: Vec<Value>) -> Self {
         Value::Array(v)
-    }
-}
-impl From<SmallVec<[Value; 16]>> for Value {
-    fn from(v: SmallVec<[Value; 16]>) -> Self {
-        Value::Array(v.into_vec())
     }
 }

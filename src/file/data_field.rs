@@ -1,5 +1,3 @@
-use smallvec::SmallVec;
-
 use super::base_type::BaseType;
 use super::consts::*;
 use super::definition_record::FieldDefinition;
@@ -69,55 +67,20 @@ where
         fun()
             .ok()
             .map(|v| v.into())
-            .filter(|v| v == &typ.invalidvalue)
+            .filter(|v| v != &typ.invalidvalue)
     };
 
     if number_of_values == 1 {
         ind_fun()
     } else if number_of_values > 1 {
-        // many_nth
-        //
-        // (0..number_of_values)
-        //     .filter_map(|_| fun().ok())
-        //     .nth(0)
-        //     .map(|v| v.into())
-        //     .filter(|v| v == &typ.invalidvalue)
-
-        // many_for
-        // let mut v = Vec::with_capacity(number_of_values);
-        // for _ in (0..number_of_values) {
-        //     ind_fun().map(|x| v.push(x));
-        // }
-        // if v.is_empty() {
-        //     None
-        // } else {
-        //     v.shrink_to_fit();
-        //     Some(v.into())
-        // }
-
-        // arr_for
-        // let mut array: [Value; 16] = [Value::Empty; 16];
-        // for i in (0..number_of_values) {
-        //     ind_fun().map(|x| array[i] = x);
-        // }
-        // if array.is_empty() {
-        //     None
-        // } else {
-        //     Some(array.into())
-        // }
-
-        // smallvec_for
-        let mut array = SmallVec::<[Value; 16]>::new();
-        for i in (0..number_of_values) {
-            ind_fun().map(|x| array.push(x));
-        }
-        if array.is_empty() {
+        let mut v: Vec<_> = (0..number_of_values).filter_map(|_| ind_fun()).collect();
+        if v.is_empty() {
             None
         } else {
-            Some(array.into())
+            v.shrink_to_fit();
+            Some(v.into())
         }
     } else {
-        println!("vals: {}", number_of_values);
-        panic!("number of values")
+        panic!("number of values: {}", number_of_values)
     }
 }
