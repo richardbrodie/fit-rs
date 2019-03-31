@@ -8,6 +8,7 @@ description = "A small crate used for reading and decoding FIT files generated b
 documentation = "https://docs.rs/fit"
 repository = "https://github.com/richardbrodie/fit-rs"
 build = "build.rs"
+fit_sdk_version = "20.85.00"
 
 [build-dependencies]
 heck = "^0.3"
