@@ -1,7 +1,6 @@
 use crate::Error;
-use failure::ResultExt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 #[derive(Debug)]

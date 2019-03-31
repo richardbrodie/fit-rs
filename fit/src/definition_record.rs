@@ -1,4 +1,5 @@
-use super::base_type::BaseType;
+use fit_sdk::BaseType;
+
 use crate::reader::{Endian, Reader};
 use crate::Error;
 

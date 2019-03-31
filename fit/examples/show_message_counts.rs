@@ -1,4 +1,4 @@
-extern crate env_logger;
+
 extern crate fit;
 
 use std::path::PathBuf;

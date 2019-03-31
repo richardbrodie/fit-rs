@@ -1,9 +1,9 @@
-use super::base_type::BaseType;
-use super::consts::*;
-use super::definition_record::FieldDefinition;
+use fit_sdk::consts::*;
+use fit_sdk::BaseType;
 
-use crate::reader::{Endian, Reader};
-use crate::Value;
+use super::definition_record::FieldDefinition;
+use super::reader::{Endian, Reader};
+use super::Value;
 
 #[derive(Debug)]
 pub struct DataField {
@@ -81,6 +81,6 @@ where
             Some(v.into())
         }
     } else {
-        panic!("number of values: {}", number_of_values)
+        panic!("tried to read 0 values")
     }
 }

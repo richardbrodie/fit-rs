@@ -55,73 +55,6 @@ impl Value {
         }
     }
 
-    // pub fn is_str(&self) -> bool {
-    //     match self {
-    //         Value::Str(_s) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_u8(&self) -> bool {
-    //     match self {
-    //         Value::U8(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_u16(&self) -> bool {
-    //     match self {
-    //         Value::U16(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_u32(&self) -> bool {
-    //     match self {
-    //         Value::U32(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_u64(&self) -> bool {
-    //     match self {
-    //         Value::U64(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_i8(&self) -> bool {
-    //     match self {
-    //         Value::I8(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_i16(&self) -> bool {
-    //     match self {
-    //         Value::I16(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_i32(&self) -> bool {
-    //     match self {
-    //         Value::I32(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_i64(&self) -> bool {
-    //     match self {
-    //         Value::I64(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_f32(&self) -> bool {
-    //     match self {
-    //         Value::F32(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-    // pub fn is_f64(&self) -> bool {
-    //     match self {
-    //         Value::F64(_v) => true,
-    //         _ => false,
-    //     }
-    // }
-
     pub fn u8(&self) -> u8 {
         if let Value::U8(i) = self {
             *i
@@ -227,7 +160,7 @@ impl PartialEq for Value {
                     panic!("failed comparing Enum {:?} with {:?}", self, other)
                 }
             }
-            Value::Array(v) => true,
+            Value::Array(_v) => true,
         }
     }
 }

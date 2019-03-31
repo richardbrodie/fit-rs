@@ -5,25 +5,33 @@
 //! Simply call `FitFile::read` with a path to a fit file.
 
 #![allow(unused)]
-#[allow(clippy::all)]
+#![allow(clippy::unreadable_literal)]
+#![warn(clippy::perf, clippy::complexity)]
+
+use fit_sdk::{new_record, DefinedMessage, Value};
 use log::warn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+mod data_field;
+mod definition_record;
 mod error;
-mod file;
-mod messages;
+mod fit_file;
+mod iterators;
+mod message;
 mod reader;
-mod value;
 
+pub use self::data_field::DataField;
 pub use self::error::{Error, ErrorKind};
-pub use self::file::{DataField, FitFile};
-pub use self::messages::{DefinedMessage, Field};
-pub use self::value::Value;
+pub use fit_file::{FileHeader, FitFile, RecordHeaderByte};
+pub use message::Message;
 
-use crate::messages::new_record;
-use crate::reader::Reader;
-use file::{DefinitionRecord, FileHeader, RecordHeaderByte};
+use definition_record::DefinitionRecord;
+use reader::Reader;
+
+const DEFINITION_HEADER_MASK: u8 = 0x40;
+const DEVELOPER_FIELDS_MASK: u8 = 0x20;
+const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
 /// Reads a given FIT file and returns a FitFile struct containing the messages
 ///
@@ -38,7 +46,7 @@ use file::{DefinitionRecord, FileHeader, RecordHeaderByte};
 pub fn read(path: PathBuf) -> Result<FitFile, Error> {
     let mut reader = Reader::new(path)?;
     let mut definitions: HashMap<u8, DefinitionRecord> = HashMap::new();
-    let mut records: Vec<Box<dyn DefinedMessage>> = Vec::new();
+    let mut records: Vec<Message> = Vec::new();
 
     let header = FileHeader::new(&mut reader)?;
 
@@ -53,8 +61,8 @@ pub fn read(path: PathBuf) -> Result<FitFile, Error> {
         } else {
             let def = definitions
                 .get(&h.local_msg_number())
-                .ok_or(crate::ErrorKind::MissingDefinition(h.local_msg_number()))?;
-            read_data_record(&def, &mut reader).map_or_else(
+                .ok_or_else(|| crate::ErrorKind::MissingDefinition(h.local_msg_number()))?;
+            fit_file::read_data_record(&def, &mut reader).map_or_else(
                 || warn!(":: no record found for {}", def.global_message_num),
                 |record| records.push(record),
             );
@@ -66,25 +74,6 @@ pub fn read(path: PathBuf) -> Result<FitFile, Error> {
     Ok(FitFile {
         file_header: header,
         records,
-    })
-}
-
-fn read_data_record(
-    def: &DefinitionRecord,
-    reader: &mut Reader,
-) -> Option<Box<dyn DefinedMessage>> {
-    let raw_fields: Vec<_> = def
-        .field_defs
-        .iter()
-        .map(|fd| DataField::new(reader, &def.architecture, &fd))
-        .collect();
-    new_record(def.global_message_num).and_then(|mut r| {
-        raw_fields.into_iter().for_each(|df| {
-            if df.value.is_some() {
-                r.process_raw_value(&df);
-            }
-        });
-        Some(r)
     })
 }
 

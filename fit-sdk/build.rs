@@ -92,15 +92,27 @@ fn read_messages_csv() {
         .from_reader(contents.as_bytes());
 
     let mut subsequent = false;
+    let mut count = 0;
     for r in rdr.records().flatten() {
         if !&r[0].is_empty() {
             let name = &r[0];
             if subsequent {
                 write!(
                     &mut def_file,
-                    "             _ => None,\n        }}\n    }}\n}}\n"
+                    "{}",
+                    format!(
+                        r#"             _ => None,
+        }}
+    }}
+    fn size(&self) -> usize {{
+        {}
+    }}
+}}"#,
+                        count
+                    )
                 )
                 .unwrap();
+                count = 0;
             } else {
                 subsequent = true;
             }
@@ -109,19 +121,13 @@ fn read_messages_csv() {
                 "{}",
                 format!(
                     r#"#[derive(Debug)]
-pub struct {0} {{ values: Vec<(u16, Value)> }}
+pub struct {0};
 impl DefinedMessage for {0} {{
     fn new() -> Self {{
-        Self {{ values: Vec::with_capacity(16) }} 
-    }}
-    fn inner(&self) -> &Vec<(u16, Value)> {{
-        &self.values
+        Self
     }}
     fn name(&self) -> &str {{
         "{1}"
-    }}
-    fn write_value(&mut self, num: u16, val: Value) {{
-        self.values.push((num, val));
     }}
     fn defined_message_field(&self, num: u16) -> Option<&DefinedMessageField> {{
         match num {{
@@ -147,6 +153,7 @@ impl DefinedMessage for {0} {{
             if value.contains("Deprecated") {
                 continue;
             }
+            count += 1;
             match parse_u32(&r[1]) {
                 Some(key) => write!(
                     &mut def_file,
@@ -177,7 +184,17 @@ impl DefinedMessage for {0} {{
     }
     write!(
         &mut def_file,
-        "            _ => None,\n        }}\n    }}\n}}\n\n"
+        "{}",
+        format!(
+            r#"             _ => None,
+        }}
+    }}
+    fn size(&self) -> usize {{
+        {}
+    }}
+}}"#,
+            count
+        )
     )
     .unwrap();
     write!(
