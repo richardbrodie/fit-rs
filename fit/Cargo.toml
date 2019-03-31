@@ -9,7 +9,7 @@ documentation = "https://docs.rs/fit"
 repository = "https://github.com/richardbrodie/fit-rs"
 
 [dependencies]
-fit-sdk = { path = "../fit-sdk" }
+fit-sdk = { version = "0.1.0", path = "../fit-sdk" }
 log = "^0.4"
 failure = "^0.1.5"
 
