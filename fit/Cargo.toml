@@ -15,7 +15,6 @@ failure = "^0.1.5"
 
 [dev-dependencies]
 env_logger = "^0.6"
-criterion = "^0.2"
 
 [[example]]
 name = "show_message_counts"
@@ -29,7 +28,4 @@ path = "examples/iterate_records.rs"
 name = "fetch_session"
 path = "examples/fetch_session.rs"
 
-[[bench]]
-name = "read_file"
-harness = false
 

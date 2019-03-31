@@ -2,4 +2,5 @@
 members = [
     "fit",
     "fit-sdk",
+    "fit-bench"
 ]

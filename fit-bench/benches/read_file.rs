@@ -6,7 +6,7 @@ use criterion::Criterion;
 use std::path::PathBuf;
 
 fn read_file() {
-    let filepath = PathBuf::from("fits/garmin_1000.fit");
+    let filepath = PathBuf::from("../fit/fits/garmin_1000.fit");
     let _ = fit::read(filepath);
 }
 
