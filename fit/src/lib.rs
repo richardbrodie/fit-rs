@@ -1,25 +1,30 @@
 #![allow(unused)]
-use std::collections::VecDeque;
+use lazy_static::lazy_static;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::sync::Mutex;
 use std::{fs::File, path::PathBuf};
 
 mod sdk {
     include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
+    include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
+    include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
+    include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
 }
-// mod types {
-// include!(concat!(env!("OUT_DIR"), "/custom_types.rs"));
-// }
-// mod fields {
-// use crate::types::FieldType;
-// include!(concat!(env!("OUT_DIR"), "/message_types.rs"));
-// }
 
 use memmap::{Mmap, MmapOptions};
-use sdk::{match_message_field, match_message_type, FieldType, MessageType};
+use sdk::{
+    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
+    FieldType, MessageType,
+};
+
+lazy_static! {
+    static ref GSTRING: Mutex<HashMap<u16, String>> = Mutex::new(HashMap::new());
+}
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -38,164 +43,94 @@ pub fn run(path: &PathBuf) {
 
     let fh = FileHeader::new(&mut buf);
     let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
-    let mut records: Vec<Message> = Vec::with_capacity(6000);
+    let mut records: Vec<Message> = Vec::with_capacity(7500);
     loop {
         let h = HeaderByte::new(&mut buf);
         if h.definition {
             let d = DefinitionRecord::new(&mut buf);
             q.push_front((h.local_num, d));
-        } else {
-            if let Some((i, d)) = q.iter().find(|x| x.0 == h.local_num) {
-                let m = match_message_type(d.global_message_number);
-                let skip = m == MessageType::None;
-                let fields = if !skip {
-                    match_message_field(m)
-                } else {
-                    &[FieldType::None]
-                };
-                let mut values: Vec<DataField> = Vec::with_capacity(16);
-                let mut idx = 0;
-                for fd in d.field_definitions.iter() {
-                    let def_num = fd.definition_number as usize;
-                    let data = DataField::new(fd, &mut buf, skip);
-                    if skip || fields.len() <= def_num {
-                        continue;
-                    }
+        } else if let Some((i, d)) = q.iter().find(|x| x.0 == h.local_num) {
+            let m = match_message_type(d.global_message_number);
+            let mut skip = false;
+            let mut fields: &[FieldType] = Default::default();
+            let mut scales: &[Option<f32>] = Default::default();
+            let mut offsets: &[Option<i16>] = Default::default();
+            let mut values: Vec<DataField> = Vec::new();
+            if m == MessageType::None {
+                skip = true;
+            } else {
+                values = Vec::with_capacity(d.field_definitions.len());
+                fields = match_message_field(m);
+                scales = match_message_scale(m);
+                offsets = match_message_offset(m);
+            };
 
-                    if let Some(mut df) = data {
+            values.extend(
+                d.field_definitions
+                    .iter()
+                    .map(|fd| (fd.definition_number, DataField::read(fd, &mut buf, skip)))
+                    .filter(|(def_num, data)| !skip && data.is_some() && fields.len() > *def_num)
+                    .map(|(def_num, mut data)| {
                         match fields[def_num] {
-                            FieldType::None => (),
-                            f @ _ => {
-                                df.convert(&f);
-                                // values.push(df)
+                            FieldType::None => {}
+                            FieldType::Coordinates => {
+                                if let Value::I32(ref inner) = &mut data {
+                                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
+                                    std::mem::replace(&mut data, Value::F32(coord));
+                                }
                             }
-                        };
-                    }
-                }
-                // values.shrink_to_fit();
-                //
-                //
-                //
-                // let values: Vec<_> = d
-                // .field_definitions
-                // .iter()
-                // .filter_map(|fd| {
-                // let def_num = fd.definition_number as usize;
-                // let data = DataField::new(fd, &mut buf, skip);
-                // if skip || fields.len() <= def_num {
-                // None
-                // } else {
-                // if let Some(mut df) = data {
-                // match fields[def_num] {
-                // FieldType::None => None,
-                // f @ _ => {
-                // df.convert(&f);
-                // Some(df)
-                // }
-                // }
-                // } else {
-                // None
-                // }
-                // }
-                // })
-                // .collect();
-                // records.push(Message {
-                // kind: m,
-                // values: values,
-                // });
-            }
+                            FieldType::DateTime => {
+                                if let Value::U32(ref inner) = data {
+                                    let date = *inner + PSEUDO_EPOCH;
+                                    std::mem::replace(&mut data, Value::Time(date));
+                                }
+                            }
+                            FieldType::LocalDateTime => {
+                                if let Value::U32(ref inner) = data {
+                                    let time = *inner + PSEUDO_EPOCH - 3600;
+                                    std::mem::replace(&mut data, Value::Time(time));
+                                }
+                            }
+                            FieldType::String | FieldType::LocaltimeIntoDay => (),
+                            FieldType::Uint8
+                            | FieldType::Uint8z
+                            | FieldType::Uint16
+                            | FieldType::Uint16z
+                            | FieldType::Uint32
+                            | FieldType::Uint32z
+                            | FieldType::Sint8 => {
+                                if let Some(s) = scales[def_num] {
+                                    data.scale(s)
+                                }
+                                if let Some(o) = offsets[def_num] {
+                                    data.offset(o)
+                                }
+                            }
+                            f => {
+                                if let Value::U8(k) = data {
+                                    if let Some(t) = enum_type(f, k.into()) {
+                                        std::mem::replace(&mut data, Value::string(t.into()));
+                                    }
+                                } else if let Value::U16(k) = data {
+                                    if let Some(t) = enum_type(f, k) {
+                                        std::mem::replace(&mut data, Value::string(t.into()));
+                                    }
+                                }
+                            }
+                        }
+                        DataField {
+                            field_num: def_num,
+                            value: data,
+                        }
+                    }),
+            );
+            // records.push(Message {
+            // kind: m,
+            // values: values,
+            // });
         }
         if buf.len() <= 14 {
             break;
-        }
-    }
-}
-impl Default for DataField {
-    fn default() -> Self {
-        DataField {
-            field_num: 0,
-            value: Value::None,
-        }
-    }
-}
-impl FieldType {
-    fn convert(&self, val: Value) -> Value {
-        match self {
-            FieldType::None => panic!("called with a none type"),
-            FieldType::Coordinates => {
-                if let Value::I32(inner) = val {
-                    let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
-                    return Value::F32(coord);
-                }
-                val
-            }
-            FieldType::DateTime => {
-                if let Value::U32(inner) = val {
-                    return Value::Time(inner + PSEUDO_EPOCH);
-                }
-                val
-            }
-            FieldType::LocalDateTime => {
-                if let Value::U32(inner) = val {
-                    return Value::Time(inner + PSEUDO_EPOCH - 3600);
-                }
-                val
-            }
-            FieldType::String | FieldType::LocaltimeIntoDay => val,
-            FieldType::Uint8
-            | FieldType::Uint8z
-            | FieldType::Uint16
-            | FieldType::Uint16z
-            | FieldType::Uint32
-            | FieldType::Uint32z
-            | FieldType::Sint8 => {
-                // scale + offset
-                val
-            }
-            FieldType::Event | FieldType::EventType => val,
-            f @ _ => {
-                // println!("other: {:?} : {:?}", val, f);
-                val
-            }
-        }
-    }
-}
-
-impl DataField {
-    fn convert(&mut self, f: &FieldType) {
-        match f {
-            FieldType::None => panic!("called with a none type"),
-            FieldType::Coordinates => {
-                if let Value::I32(inner) = self.value {
-                    let coord = inner as f32 * COORD_SEMICIRCLES_CALC;
-                    self.value = Value::F32(coord);
-                }
-            }
-            FieldType::DateTime => {
-                if let Value::U32(inner) = self.value {
-                    self.value = Value::Time(inner + PSEUDO_EPOCH);
-                }
-            }
-            FieldType::LocalDateTime => {
-                if let Value::U32(inner) = self.value {
-                    self.value = Value::Time(inner + PSEUDO_EPOCH - 3600);
-                }
-            }
-            FieldType::String | FieldType::LocaltimeIntoDay => (),
-            FieldType::Uint8
-            | FieldType::Uint8z
-            | FieldType::Uint16
-            | FieldType::Uint16z
-            | FieldType::Uint32
-            | FieldType::Uint32z
-            | FieldType::Sint8 => {
-                // scale + offset
-            }
-            FieldType::Event | FieldType::EventType => (),
-            f @ _ => {
-                // println!("other: {:?} : {:?}", self.value, f);
-                // return None;
-            }
         }
     }
 }
@@ -218,7 +153,7 @@ impl FileHeader {
             num_record_bytes: u32(map, 0),
             fileext: {
                 let buf = arr4(map);
-                buf == ".FIT".as_bytes()
+                &buf == b".FIT"
             },
             crc: u16(map, 0),
         }
@@ -269,7 +204,7 @@ impl DefinitionRecord {
 
 #[derive(Debug, Copy, Clone)]
 pub struct FieldDefinition {
-    pub definition_number: u8,
+    pub definition_number: usize,
     pub size: u8,
     pub base_type: u8,
 }
@@ -279,30 +214,30 @@ impl FieldDefinition {
         *map = rest;
         let base_num = buf[2] & FIELD_DEFINITION_BASE_NUMBER;
         Self {
-            definition_number: buf[0],
+            definition_number: buf[0].into(),
             size: buf[1],
             base_type: base_num,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct DataField {
-    field_num: u8,
+    field_num: usize,
     value: Value,
 }
 impl DataField {
-    fn new(fd: &FieldDefinition, map: &mut &[u8], skip: bool) -> Option<DataField> {
-        let val = match fd.base_type {
+    fn read(fd: &FieldDefinition, map: &mut &[u8], skip: bool) -> Value {
+        match fd.base_type {
             0 | 2 | 13 => {
                 // enum / uint8 / byte
                 if fd.size > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u8(map);
                 if val == 0xFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::U8(val)
             }
@@ -310,11 +245,11 @@ impl DataField {
                 // sint8
                 if fd.size > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = i8(map);
                 if val == 0x7F {
-                    return None;
+                    return Value::None;
                 }
                 Value::I8(val)
             }
@@ -323,11 +258,11 @@ impl DataField {
                 let number_of_values = fd.size / 2;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = i16(map, 0);
                 if val == 0x7FFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::I16(val)
             }
@@ -336,11 +271,11 @@ impl DataField {
                 let number_of_values = fd.size / 2;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u16(map, 0);
                 if val == 0xFFFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::U16(val)
             }
@@ -349,11 +284,11 @@ impl DataField {
                 let number_of_values = fd.size / 4;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = i32(map, 0);
                 if val == 0x7F_FFF_FFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::I32(val)
             }
@@ -362,11 +297,11 @@ impl DataField {
                 let number_of_values = fd.size / 4;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u32(map, 0);
-                if val == 0xFFFFFFFF {
-                    return None;
+                if val == 0xFFFF_FFFF {
+                    return Value::None;
                 }
                 Value::U32(val)
             }
@@ -374,11 +309,11 @@ impl DataField {
                 // string
                 let (buf, rest) = map.split_at(fd.size as usize);
                 *map = rest;
-                let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).map(|b| *b).collect();
+                let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
                 if let Ok(s) = String::from_utf8(buf) {
-                    Value::String(s)
+                    Value::string(s)
                 } else {
-                    return None;
+                    Value::None
                 }
             }
             8 => {
@@ -386,11 +321,11 @@ impl DataField {
                 let number_of_values = fd.size / 4;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let uval = u32(map, 0);
                 if uval == 0xFF_FFF_FFF {
-                    return None;
+                    return Value::None;
                 }
                 let val = f32::from_bits(uval);
                 Value::F32(val)
@@ -400,11 +335,11 @@ impl DataField {
                 let number_of_values = fd.size / 8;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let uval = u64(map, 0);
                 if uval == 0xF_FFF_FFF_FFF_FFF_FFF {
-                    return None;
+                    return Value::None;
                 }
                 let val = f64::from_bits(uval);
                 Value::F64(val)
@@ -413,11 +348,11 @@ impl DataField {
                 // uint8z
                 if fd.size > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u8(map);
                 if val == 0x00 {
-                    return None;
+                    return Value::None;
                 }
                 Value::U8(val)
             }
@@ -426,11 +361,11 @@ impl DataField {
                 let number_of_values = fd.size / 2;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u16(map, 0);
                 if val == 0x0000 {
-                    return None;
+                    return Value::None;
                 }
                 Value::U16(val)
             }
@@ -439,11 +374,11 @@ impl DataField {
                 let number_of_values = fd.size / 4;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u32(map, 0);
-                if val == 0x00000000 {
-                    return None;
+                if val == 0x0000_0000 {
+                    return Value::None;
                 }
                 Value::U32(val)
             }
@@ -452,11 +387,11 @@ impl DataField {
                 let number_of_values = fd.size / 8;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = i64(map, 0);
                 if val == 0x7_FFF_FFF_FFF_FFF_FFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::I64(val)
             }
@@ -465,11 +400,11 @@ impl DataField {
                 let number_of_values = fd.size / 8;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u64(map, 0);
                 if val == 0xF_FFF_FFF_FFF_FFF_FFF {
-                    return None;
+                    return Value::None;
                 }
                 Value::U64(val)
             }
@@ -478,29 +413,26 @@ impl DataField {
                 let number_of_values = fd.size / 8;
                 if number_of_values > 1 {
                     skip_bytes(map, fd.size);
-                    return None;
+                    return Value::None;
                 }
                 let val = u64(map, 0);
                 if val == 0x0_000_000_000_000_000 {
-                    return None;
+                    return Value::None;
                 }
                 Value::U64(val)
             }
-            _ => return None,
-        };
-        Some(DataField {
-            field_num: fd.definition_number,
-            value: val,
-        })
+            _ => Value::None,
+        }
     }
 }
 
+#[derive(Clone)]
 struct Message {
     kind: MessageType,
     values: Vec<DataField>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum Value {
     U8(u8),
     I8(i8),
@@ -508,13 +440,90 @@ enum Value {
     I16(i16),
     U32(u32),
     I32(i32),
-    String(String),
+    String(u16),
     F32(f32),
     F64(f64),
     I64(i64),
     U64(u64),
     Time(u32),
     None,
+}
+impl Value {
+    fn is_none(&self) -> bool {
+        match self {
+            Value::None => true,
+            _ => false,
+        }
+    }
+    fn is_some(&self) -> bool {
+        match self {
+            Value::None => false,
+            _ => true,
+        }
+    }
+    fn string(s: String) -> Self {
+        let x = rand::random::<u16>();
+        GSTRING.lock().unwrap().insert(x, s);
+        Value::String(x)
+    }
+    fn scale(&mut self, val: f32) {
+        match self {
+            Value::U8(ref mut inner) => {
+                let new_inner = f32::from(*inner) / val;
+                std::mem::replace(inner, new_inner as u8);
+            }
+            Value::I8(ref mut inner) => {
+                let new_inner = f32::from(*inner) / val;
+                std::mem::replace(inner, new_inner as i8);
+            }
+            Value::U16(ref mut inner) => {
+                let new_inner = f32::from(*inner) / val;
+                std::mem::replace(inner, new_inner as u16);
+            }
+            Value::I16(ref mut inner) => {
+                let new_inner = f32::from(*inner) / val;
+                std::mem::replace(inner, new_inner as i16);
+            }
+            Value::U32(ref mut inner) => {
+                let new_inner = *inner as f32 / val;
+                std::mem::replace(inner, new_inner as u32);
+            }
+            Value::I32(ref mut inner) => {
+                let new_inner = *inner as f32 / val;
+                std::mem::replace(inner, new_inner as i32);
+            }
+            _ => (),
+        }
+    }
+    fn offset(&mut self, val: i16) {
+        match self {
+            Value::U8(ref mut inner) => {
+                let new_inner = i16::from(*inner) - val;
+                std::mem::replace(inner, new_inner as u8);
+            }
+            Value::I8(ref mut inner) => {
+                let new_inner = i16::from(*inner) - val;
+                std::mem::replace(inner, new_inner as i8);
+            }
+            Value::U16(ref mut inner) => {
+                let new_inner = *inner as i16 - val;
+                std::mem::replace(inner, new_inner as u16);
+            }
+            Value::I16(ref mut inner) => {
+                let new_inner = *inner - val;
+                std::mem::replace(inner, new_inner);
+            }
+            Value::U32(ref mut inner) => {
+                let new_inner = *inner as i16 - val;
+                std::mem::replace(inner, new_inner as u32);
+            }
+            Value::I32(ref mut inner) => {
+                let new_inner = *inner as i16 - val;
+                std::mem::replace(inner, i32::from(new_inner));
+            }
+            _ => (),
+        }
+    }
 }
 
 fn u8(map: &mut &[u8]) -> u8 {
