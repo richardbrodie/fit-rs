@@ -86,76 +86,64 @@ pub fn run(path: &PathBuf) {
 
                 // values is an array longer than we needed, so only take the number of elements we
                 // need
-                for v in values[..valid_fields].iter_mut() {
-                    // this field has no valid SDK definition, skip this iteration
-                    if v.field_num >= fields.len() {
-                        continue;
-                    }
-
-                    match fields[v.field_num] {
-                        FieldType::None => {}
-                        FieldType::Coordinates => {
-                            if let Value::I32(ref inner) = v.value {
-                                let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
-                                std::mem::replace(&mut v.value, Value::F32(coord));
+                for vi in 0..valid_fields {
+                    let mut v = values[vi];
+                    if v.field_num < fields.len() {
+                        match fields[v.field_num] {
+                            FieldType::None => v.field_num = std::usize::MAX,
+                            FieldType::Coordinates => {
+                                if let Value::I32(ref inner) = v.value {
+                                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
+                                    v.value = Value::F32(coord);
+                                }
                             }
+                            FieldType::DateTime => {
+                                if let Value::U32(ref inner) = v.value {
+                                    let date = *inner + PSEUDO_EPOCH;
+                                    v.value = Value::Time(date);
+                                }
+                            }
+                            FieldType::LocalDateTime => {
+                                if let Value::U32(ref inner) = v.value {
+                                    let time = *inner + PSEUDO_EPOCH - 3600;
+                                    v.value = Value::Time(time);
+                                }
+                            }
+                            FieldType::String | FieldType::LocaltimeIntoDay => {
+                                v.field_num = std::usize::MAX
+                            }
+                            FieldType::Uint8
+                            | FieldType::Uint8z
+                            | FieldType::Uint16
+                            | FieldType::Uint16z
+                            | FieldType::Uint32
+                            | FieldType::Uint32z
+                            | FieldType::Sint8 => {
+                                if let Some(s) = scales.get(v.field_num) {
+                                    if let Some(s) = s {
+                                        v.value.scale(*s)
+                                    }
+                                }
+                                if let Some(o) = offsets.get(v.field_num) {
+                                    if let Some(o) = o {
+                                        v.value.offset(*o)
+                                    }
+                                }
+                            }
+                            f => {
+                                if let Value::U8(k) = v.value {
+                                    if let Some(t) = enum_type(f, u16::from(k)) {
+                                        v.value = Value::Enum(t);
+                                    }
+                                } else if let Value::U16(k) = v.value {
+                                    if let Some(t) = enum_type(f, u16::from(k)) {
+                                        v.value = Value::Enum(t);
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
-                        // FieldType::DateTime => {
-                        // if let Value::U32(ref inner) = val {
-                        // let date = *inner + PSEUDO_EPOCH;
-                        // // std::mem::replace(&mut val, &mut Value::Time(date));
-                        // std::mem::replace(&mut val, Value::Time(date));
-                        // }
-                        // }
-                        // FieldType::LocalDateTime => {
-                        // if let Value::U32(ref inner) = val {
-                        // let time = *inner + PSEUDO_EPOCH - 3600;
-                        // // std::mem::replace(&mut val, &mut Value::Time(time));
-                        // std::mem::replace(&mut val, Value::Time(time));
-                        // }
-                        // }
-                        // FieldType::String | FieldType::LocaltimeIntoDay => {}
-                        // FieldType::Uint8
-                        // | FieldType::Uint8z
-                        // | FieldType::Uint16
-                        // | FieldType::Uint16z
-                        // | FieldType::Uint32
-                        // | FieldType::Uint32z
-                        // | FieldType::Sint8 => {
-                        // if let Some(s) = scales.get(v.field_num) {
-                        // if let Some(s) = s {
-                        // val.scale(*s)
-                        // }
-                        // }
-                        // if let Some(o) = offsets.get(v.field_num) {
-                        // if let Some(o) = o {
-                        // val.offset(*o)
-                        // }
-                        // }
-                        // }
-                        // f => {
-                        // if let Value::U8(k) = val {
-                        // // if let Some(t) = enum_type(f, u16::from(*k)) {
-                        // // std::mem::replace(&mut val, Value::Enum(t));
-                        // if let Some(t) = enum_type(f, u16::from(k)) {
-                        // std::mem::replace(&mut val, Value::Enum(t));
-                        // }
-                        // } else if let Value::U16(k) = val {
-                        // // if let Some(t) = enum_type(f, u16::from(*k)) {
-                        // // std::mem::replace(&mut val, &mut Value::Enum(t));
-                        // if let Some(t) = enum_type(f, u16::from(k)) {
-                        // std::mem::replace(&mut val, Value::Enum(t));
-                        // }
-                        // }
-                        // }
-                        _ => {}
                     }
-                    // if skipped_place {
-                    // std::mem::replace(&mut val, Value::None);
-                    // skipped_place = false;
-                    // }
-
-                    // let _ = final_values.push(*v);
                 }
             }
         }
