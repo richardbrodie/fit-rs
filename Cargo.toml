@@ -13,7 +13,7 @@ fit_sdk_version = "20.85.00"
 memmap = "0.7.0"
 lazy_static = ""
 log = "^0.4"
-# copyless = ""
+copyless = ""
 
 [dev-dependencies]
 criterion = ""

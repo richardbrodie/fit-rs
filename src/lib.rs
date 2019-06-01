@@ -1,5 +1,5 @@
 #![allow(unused)]
-// use copyless::VecHelper;
+use copyless::VecHelper;
 use lazy_static::lazy_static;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
@@ -28,7 +28,7 @@ lazy_static! {
     static ref GSTRING: Mutex<HashMap<u8, String>> = Mutex::new(HashMap::with_capacity(64));
 }
 
-const VARRAY_LENGTH: usize = 64;
+const VARRAY_LENGTH: usize = 16;
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -60,7 +60,7 @@ pub fn run(path: &PathBuf) {
                 MessageType::None => true,
                 _ => false,
             };
-            let mut values: [DataField; 64] = [Default::default(); 64];
+            let mut values: [DataField; 46] = [Default::default(); 46];
 
             // read all fields, regardless if we already know we won't process the results further
             // otherwise we'll lose our place in the file
@@ -86,65 +86,72 @@ pub fn run(path: &PathBuf) {
 
                 // values is an array longer than we needed, so only take the number of elements we
                 // need
-                for vi in 0..valid_fields {
-                    let mut v = values[vi];
-                    if v.field_num < fields.len() {
-                        match fields[v.field_num] {
-                            FieldType::None => v.field_num = std::usize::MAX,
-                            FieldType::Coordinates => {
-                                if let Value::I32(ref inner) = v.value {
-                                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
-                                    v.value = Value::F32(coord);
-                                }
-                            }
-                            FieldType::DateTime => {
-                                if let Value::U32(ref inner) = v.value {
-                                    let date = *inner + PSEUDO_EPOCH;
-                                    v.value = Value::Time(date);
-                                }
-                            }
-                            FieldType::LocalDateTime => {
-                                if let Value::U32(ref inner) = v.value {
-                                    let time = *inner + PSEUDO_EPOCH - 3600;
-                                    v.value = Value::Time(time);
-                                }
-                            }
-                            FieldType::String | FieldType::LocaltimeIntoDay => {
-                                v.field_num = std::usize::MAX
-                            }
-                            FieldType::Uint8
-                            | FieldType::Uint8z
-                            | FieldType::Uint16
-                            | FieldType::Uint16z
-                            | FieldType::Uint32
-                            | FieldType::Uint32z
-                            | FieldType::Sint8 => {
-                                if let Some(s) = scales.get(v.field_num) {
-                                    if let Some(s) = s {
-                                        v.value.scale(*s)
+                let mut final_values: Vec<DataField> = Vec::with_capacity(valid_fields);
+                final_values.extend(
+                    values
+                        .iter_mut()
+                        .take(valid_fields)
+                        .filter(|v| v.field_num < fields.len())
+                        .map(|v| {
+                            match fields[v.field_num] {
+                                FieldType::None => (),
+                                FieldType::Coordinates => {
+                                    if let Value::I32(ref inner) = v.value {
+                                        let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
+                                        std::mem::replace(&mut v.value, Value::F32(coord));
                                     }
                                 }
-                                if let Some(o) = offsets.get(v.field_num) {
-                                    if let Some(o) = o {
-                                        v.value.offset(*o)
+                                FieldType::DateTime => {
+                                    if let Value::U32(ref inner) = v.value {
+                                        let date = *inner + PSEUDO_EPOCH;
+                                        std::mem::replace(&mut v.value, Value::Time(date));
+                                    }
+                                }
+                                FieldType::LocalDateTime => {
+                                    if let Value::U32(ref inner) = v.value {
+                                        let time = *inner + PSEUDO_EPOCH - 3600;
+                                        std::mem::replace(&mut v.value, Value::Time(time));
+                                    }
+                                }
+                                FieldType::String | FieldType::LocaltimeIntoDay => {}
+                                FieldType::Uint8
+                                | FieldType::Uint8z
+                                | FieldType::Uint16
+                                | FieldType::Uint16z
+                                | FieldType::Uint32
+                                | FieldType::Uint32z
+                                | FieldType::Sint8 => {
+                                    if let Some(s) = scales.get(v.field_num) {
+                                        if let Some(s) = s {
+                                            v.value.scale(*s)
+                                        }
+                                    }
+                                    if let Some(o) = offsets.get(v.field_num) {
+                                        if let Some(o) = o {
+                                            v.value.offset(*o)
+                                        }
+                                    }
+                                }
+                                f => {
+                                    if let Value::U8(k) = v.value {
+                                        if let Some(t) = enum_type(f, u16::from(k)) {
+                                            std::mem::replace(&mut v.value, Value::Enum(t));
+                                        }
+                                    } else if let Value::U16(k) = v.value {
+                                        if let Some(t) = enum_type(f, k) {
+                                            std::mem::replace(&mut v.value, Value::Enum(t));
+                                        }
                                     }
                                 }
                             }
-                            f => {
-                                if let Value::U8(k) = v.value {
-                                    if let Some(t) = enum_type(f, u16::from(k)) {
-                                        v.value = Value::Enum(t);
-                                    }
-                                } else if let Value::U16(k) = v.value {
-                                    if let Some(t) = enum_type(f, u16::from(k)) {
-                                        v.value = Value::Enum(t);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+                            *v
+                        }),
+                );
+                let m = Message {
+                    values: final_values,
+                    kind: m,
+                };
+                records.alloc().init(m);
             }
         }
         if buf.len() <= 14 {
@@ -152,7 +159,6 @@ pub fn run(path: &PathBuf) {
         }
     }
 }
-
 #[derive(Debug)]
 pub struct FileHeader {
     filesize: u8,
@@ -566,8 +572,8 @@ fn read_raw_field(
 }
 
 #[derive(Clone)]
-struct Message {
-    kind: MessageType,
+pub struct Message {
+    pub kind: MessageType,
     values: Vec<DataField>,
 }
 
@@ -671,46 +677,29 @@ impl Value {
 #[derive(Clone, Copy)]
 struct VArray<T: Arrayable> {
     length: usize,
-    stack: [T; VARRAY_LENGTH],
+    stack: [T; 16],
 }
 impl<T: Arrayable> VArray<T> {
     fn new() -> Self {
         Self {
             length: 0,
-            stack: [Default::default(); VARRAY_LENGTH],
+            stack: [Default::default(); 16],
         }
     }
 
     fn from_slice(v: &[T]) -> Option<Self> {
-        match v.len() {
-            0 => None,
-            _ => {
-                let mut a: [T; VARRAY_LENGTH] = [Default::default(); VARRAY_LENGTH];
-                v.iter()
-                    .enumerate()
-                    .take(VARRAY_LENGTH)
-                    .for_each(|(i, x)| a[i] = *x);
-                Some(Self {
-                    length: v.len(),
-                    stack: a,
-                })
-            }
-        }
-    }
-
-    fn push(&mut self, t: T) -> Result<(), ()> {
-        if self.length == VARRAY_LENGTH {
-            return Err(());
-        }
-        let i = self.length + 1;
-        self.stack[i] = t;
-        self.length = i;
-        Ok(())
+        let mut a: [T; 16] = [Default::default(); 16];
+        a[..v.len()].clone_from_slice(&v[..]);
+        //for i in 0..v.len() {
+        //    a[i] = v[i];
+        //}
+        Some(Self {
+            length: v.len(),
+            stack: a,
+        })
     }
 }
 
 trait Arrayable: Copy + Default {}
 impl Arrayable for u8 {}
 impl Arrayable for u16 {}
-// impl Arrayable for DataField {}
-// impl Arrayable for Value {}

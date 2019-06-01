@@ -21,7 +21,7 @@ const MATCH_MESSAGE_SCALE_FILE: &'static str = "match_message_scale.rs";
 const MATCH_CUSTOM_ENUM_FILE: &'static str = "match_custom_enum.rs";
 
 fn main() {
-    let mut in_file = File::open("types.semi.csv").unwrap();
+    let mut in_file = File::open("data/types.semi.csv").unwrap();
     let mut contents = String::new();
     in_file.read_to_string(&mut contents).unwrap();
     let mut rdr = ReaderBuilder::new()
@@ -51,7 +51,7 @@ fn main() {
     }
     types_store.insert(type_name.clone(), type_buf);
 
-    let mut in_file = File::open("messages.semi.csv").unwrap();
+    let mut in_file = File::open("data/messages.semi.csv").unwrap();
     let mut contents = String::new();
     in_file.read_to_string(&mut contents).unwrap();
     let mut rdr = ReaderBuilder::new()
