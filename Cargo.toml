@@ -12,7 +12,6 @@ fit_sdk_version = "20.85.00"
 [dependencies]
 memmap = "0.7.0"
 lazy_static = ""
-log = "^0.4"
 copyless = ""
 
 [dev-dependencies]
@@ -23,8 +22,14 @@ csv = "^1.0"
 heck = "^0.3"
 
 [[bin]]
-name = "read_fit"
-path = "src/main.rs"
+name = "test_std"
+path = "bin/test_std.rs"
+[[bin]]
+name = "test_all"
+path = "bin/test_all.rs"
+[[bin]]
+name = "test_dev_fields"
+path = "bin/test_dev_fields.rs"
 
 [[bench]]
 name = "read_file"

@@ -64,7 +64,7 @@ impl FieldDefinition {
                     let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
                     if c.is_empty() {
                         return Value::None;
-                    } else if c.len() <= 8 {
+                    } else if c.len() <= 16 {
                         return match VArray::from_slice(&c) {
                             Some(a) => Value::ArrU8(a),
                             None => Value::None,
@@ -109,7 +109,7 @@ impl FieldDefinition {
                         .collect();
                     if c.is_empty() {
                         return Value::None;
-                    } else if c.len() <= 8 {
+                    } else if c.len() <= 16 {
                         return match VArray::from_slice(&c) {
                             Some(a) => Value::ArrU16(a),
                             None => Value::None,
@@ -148,7 +148,7 @@ impl FieldDefinition {
                     skip_bytes(map, self.size);
                     return Value::None;
                 } else if number_of_values > 1 {
-                    println!("6 u32: {}", self.size);
+                    println!("TODO: 6 u32: {}", self.size);
                     skip_bytes(map, self.size);
                     return Value::None;
                 }
