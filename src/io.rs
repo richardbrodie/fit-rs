@@ -1,6 +1,10 @@
-use crate::Endianness;
-
 use std::convert::TryInto;
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum Endianness {
+    Little,
+    Big,
+}
 
 pub fn u8(map: &mut &[u8]) -> u8 {
     let (val, rest) = map.split_first().unwrap();

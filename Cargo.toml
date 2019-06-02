@@ -33,3 +33,17 @@ harness = false
 [profile.release]
 opt-level = 3
 codegen-units = 1
+
+
+#[[example]]
+#name = "show_message_counts"
+#path = "examples/show_message_counts.rs"
+
+[[example]]
+name = "iterate_records"
+path = "examples/iterate_records.rs"
+
+#[[example]]
+#name = "fetch_session"
+#path = "examples/fetch_session.rs"
+

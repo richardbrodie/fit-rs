@@ -1,4 +1,3 @@
-#![allow(unused)]
 use copyless::VecHelper;
 use lazy_static::lazy_static;
 use memmap::MmapOptions;
@@ -16,12 +15,17 @@ mod sdk {
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
 }
+mod arrayable;
+mod field_definition;
 mod io;
 
+use arrayable::*;
+use field_definition::FieldDefinition;
 use io::*;
+pub use sdk::MessageType;
 use sdk::{
     enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
-    FieldType, MessageType,
+    FieldType,
 };
 
 lazy_static! {
@@ -40,7 +44,7 @@ const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
 
-pub fn run(path: &PathBuf) {
+pub fn run(path: &PathBuf) -> Vec<Message> {
     GSTRING.lock().unwrap().drain();
     let file = File::open(path).unwrap();
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
@@ -67,7 +71,7 @@ pub fn run(path: &PathBuf) {
             let mut valid_fields = 0;
             for i in 0..d.field_definitions.len() {
                 let fd = &d.field_definitions[i];
-                let d = read_raw_field(fd, d.endianness, &mut buf, skip);
+                let d = fd.read_raw_field(d.endianness, &mut buf, skip);
                 if !skip && d.is_some() {
                     values[valid_fields] = DataField {
                         field_num: fd.definition_number,
@@ -158,9 +162,10 @@ pub fn run(path: &PathBuf) {
             break;
         }
     }
+    records
 }
 #[derive(Debug)]
-pub struct FileHeader {
+struct FileHeader {
     filesize: u8,
     protocol: u8,
     profile_version: u16,
@@ -169,7 +174,7 @@ pub struct FileHeader {
     crc: u16,
 }
 impl FileHeader {
-    pub fn new(map: &mut &[u8]) -> Self {
+    fn new(map: &mut &[u8]) -> Self {
         Self {
             filesize: u8(map),
             protocol: u8(map),
@@ -190,7 +195,7 @@ struct HeaderByte {
     local_num: u8,
 }
 impl HeaderByte {
-    pub fn new(map: &mut &[u8]) -> Self {
+    fn new(map: &mut &[u8]) -> Self {
         let b = u8(map);
         if (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK {
             panic!("unsupported developer fields");
@@ -202,19 +207,13 @@ impl HeaderByte {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
-pub enum Endianness {
-    Little,
-    Big,
-}
-
 struct DefinitionRecord {
     endianness: Endianness,
     global_message_number: u16,
     field_definitions: Vec<FieldDefinition>,
 }
 impl DefinitionRecord {
-    pub fn new(map: &mut &[u8]) -> Self {
+    fn new(map: &mut &[u8]) -> Self {
         skip_bytes(map, 1);
         let endian = match u8(map) {
             1 => Endianness::Big,
@@ -233,27 +232,8 @@ impl DefinitionRecord {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct FieldDefinition {
-    pub definition_number: usize,
-    pub size: u8,
-    pub base_type: u8,
-}
-impl FieldDefinition {
-    pub fn new(map: &mut &[u8]) -> Self {
-        let (buf, rest) = map.split_at(3);
-        *map = rest;
-        let base_num = buf[2] & FIELD_DEFINITION_BASE_NUMBER;
-        Self {
-            definition_number: buf[0].into(),
-            size: buf[1],
-            base_type: base_num,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-struct DataField {
+#[derive(Clone, Copy, Debug)]
+pub struct DataField {
     field_num: usize,
     value: Value,
 }
@@ -265,320 +245,15 @@ impl Default for DataField {
         }
     }
 }
-fn read_raw_field(
-    fd: &FieldDefinition,
-    endianness: Endianness,
-    map: &mut &[u8],
-    skip: bool,
-) -> Value {
-    match fd.base_type {
-        0 | 13 => {
-            // enum / byte
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if fd.size > 1 {
-                println!("0/13:enum/byte: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u8(map);
-            if val == 0xFF {
-                return Value::None;
-            }
-            Value::U8(val)
-        }
-        1 => {
-            // sint8
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if fd.size > 1 {
-                println!("1 i8: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = i8(map);
-            if val == 0x7F {
-                return Value::None;
-            }
-            Value::I8(val)
-        }
-        2 => {
-            // uint8
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if fd.size > 1 {
-                let (buf, rest) = map.split_at(fd.size.into());
-                *map = rest;
-                let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
-                if c.is_empty() {
-                    return Value::None;
-                } else if c.len() <= 8 {
-                    return match VArray::from_slice(&c) {
-                        Some(a) => Value::ArrU8(a),
-                        None => Value::None,
-                    };
-                } else {
-                    panic!("2:u8 arr is too long: {}", c.len());
-                }
-            }
-            let val = u8(map);
-            if val == 0xFF {
-                return Value::None;
-            }
-            Value::U8(val)
-        }
-        3 => {
-            // sint16
-            let number_of_values = fd.size / 2;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("3 i16: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = i16(map, endianness);
-            if val == 0x7FFF {
-                return Value::None;
-            }
-            Value::I16(val)
-        }
-        4 => {
-            // uint16
-            let number_of_values = fd.size / 2;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                let c: Vec<_> = (0..number_of_values)
-                    .map(|_| u16(map, endianness))
-                    .filter(|x| *x != 0xFFFF)
-                    .collect();
-                if c.is_empty() {
-                    return Value::None;
-                } else if c.len() <= 8 {
-                    return match VArray::from_slice(&c) {
-                        Some(a) => Value::ArrU16(a),
-                        None => Value::None,
-                    };
-                } else {
-                    panic!("2:u8 arr is too long: {}", c.len());
-                }
-            }
-            let val = u16(map, endianness);
-            if val == 0xFFFF {
-                return Value::None;
-            }
-            Value::U16(val)
-        }
-        5 => {
-            // sint32
-            let number_of_values = fd.size / 4;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("5 i32: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = i32(map, endianness);
-            if val == 0x7F_FFF_FFF {
-                return Value::None;
-            }
-            Value::I32(val)
-        }
-        6 => {
-            // uint32
-            let number_of_values = fd.size / 4;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("6 u32: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u32(map, endianness);
-            if val == 0xFFFF_FFFF {
-                return Value::None;
-            }
-            Value::U32(val)
-        }
-        7 => {
-            // string
-            let (buf, rest) = map.split_at(fd.size as usize);
-            *map = rest;
-            let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
-            if let Ok(s) = String::from_utf8(buf) {
-                match GSTRING.lock() {
-                    Ok(mut h) => {
-                        let k = match h.keys().max() {
-                            Some(k) => k + 1,
-                            None => 0,
-                        };
-                        h.insert(k, s);
-                        Value::String(k)
-                    }
-                    Err(_) => Value::None,
-                }
-            } else {
-                Value::None
-            }
-        }
-        8 => {
-            // float32
-            let number_of_values = fd.size / 4;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("8 f32: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let uval = u32(map, endianness);
-            if uval == 0xFF_FFF_FFF {
-                return Value::None;
-            }
-            let val = f32::from_bits(uval);
-            Value::F32(val)
-        }
-        9 => {
-            // float64
-            let number_of_values = fd.size / 8;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("9 f64: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let uval = u64(map, endianness);
-            if uval == 0xF_FFF_FFF_FFF_FFF_FFF {
-                return Value::None;
-            }
-            let val = f64::from_bits(uval);
-            Value::F64(val)
-        }
-        10 => {
-            // uint8z
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if fd.size > 1 {
-                println!("10:uint8z {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u8(map);
-            if val == 0x00 {
-                return Value::None;
-            }
-            Value::U8(val)
-        }
-        11 => {
-            // uint16z
-            let number_of_values = fd.size / 2;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("11 u16: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u16(map, endianness);
-            if val == 0x0000 {
-                return Value::None;
-            }
-            Value::U16(val)
-        }
-        12 => {
-            // uint32z
-            let number_of_values = fd.size / 4;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("12 u32: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u32(map, endianness);
-            if val == 0x0000_0000 {
-                return Value::None;
-            }
-            Value::U32(val)
-        }
-        14 => {
-            // sint64
-            let number_of_values = fd.size / 8;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("14 i64: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = i64(map, endianness);
-            if val == 0x7_FFF_FFF_FFF_FFF_FFF {
-                return Value::None;
-            }
-            Value::I64(val)
-        }
-        15 => {
-            // uint64
-            let number_of_values = fd.size / 8;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("15 u64: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u64(map, endianness);
-            if val == 0xF_FFF_FFF_FFF_FFF_FFF {
-                return Value::None;
-            }
-            Value::U64(val)
-        }
-        16 => {
-            // uint64z
-            let number_of_values = fd.size / 8;
-            if skip {
-                skip_bytes(map, fd.size);
-                return Value::None;
-            } else if number_of_values > 1 {
-                println!("16 u64: {}", fd.size);
-                skip_bytes(map, fd.size);
-                return Value::None;
-            }
-            let val = u64(map, endianness);
-            if val == 0x0_000_000_000_000_000 {
-                return Value::None;
-            }
-            Value::U64(val)
-        }
-        _ => Value::None,
-    }
-}
 
 #[derive(Clone)]
 pub struct Message {
     pub kind: MessageType,
-    values: Vec<DataField>,
+    pub values: Vec<DataField>,
 }
 
-#[derive(Clone, Copy)]
-enum Value {
+#[derive(Clone, Copy, Debug)]
+pub enum Value {
     U8(u8),
     I8(i8),
     U16(u16),
@@ -602,12 +277,6 @@ impl Default for Value {
     }
 }
 impl Value {
-    fn is_none(&self) -> bool {
-        match self {
-            Value::None => true,
-            _ => false,
-        }
-    }
     fn is_some(&self) -> bool {
         match self {
             Value::None => false,
@@ -673,33 +342,3 @@ impl Value {
         }
     }
 }
-
-#[derive(Clone, Copy)]
-struct VArray<T: Arrayable> {
-    length: usize,
-    stack: [T; 16],
-}
-impl<T: Arrayable> VArray<T> {
-    fn new() -> Self {
-        Self {
-            length: 0,
-            stack: [Default::default(); 16],
-        }
-    }
-
-    fn from_slice(v: &[T]) -> Option<Self> {
-        let mut a: [T; 16] = [Default::default(); 16];
-        a[..v.len()].clone_from_slice(&v[..]);
-        //for i in 0..v.len() {
-        //    a[i] = v[i];
-        //}
-        Some(Self {
-            length: v.len(),
-            stack: a,
-        })
-    }
-}
-
-trait Arrayable: Copy + Default {}
-impl Arrayable for u8 {}
-impl Arrayable for u16 {}
