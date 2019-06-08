@@ -1,6 +1,6 @@
-use super::arrayable::VArray;
 use super::io::*;
 use super::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone)]
 pub struct FieldDefinition {
@@ -12,14 +12,13 @@ impl FieldDefinition {
     pub fn new(map: &mut &[u8]) -> Self {
         let (buf, rest) = map.split_at(3);
         *map = rest;
-        let base_num = buf[2] & super::FIELD_DEFINITION_BASE_NUMBER;
         Self {
             definition_number: buf[0].into(),
             size: buf[1],
-            base_type: base_num,
+            base_type: buf[2] & super::FIELD_DEFINITION_BASE_NUMBER,
         }
     }
-    pub fn read_raw_field(&self, endianness: Endianness, map: &mut &[u8], skip: bool) -> Value {
+    pub fn read_raw_field(&self, endianness: Endianness, map: &mut &[u8], skip: bool, global_string_map: &mut HashMap<u8, String>) -> Value {
         match self.base_type {
             0 | 13 => {
                 // enum / byte
@@ -64,13 +63,9 @@ impl FieldDefinition {
                     let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
                     if c.is_empty() {
                         return Value::None;
-                    } else if c.len() <= 16 {
-                        return match VArray::from_slice(&c) {
-                            Some(a) => Value::ArrU8(a),
-                            None => Value::None,
-                        };
                     } else {
-                        panic!("2:u8 arr is too long: {}", c.len());
+                        let b = c.into_boxed_slice();
+                        return Value::ArrU8(b);
                     }
                 }
                 let val = u8(map);
@@ -109,13 +104,9 @@ impl FieldDefinition {
                         .collect();
                     if c.is_empty() {
                         return Value::None;
-                    } else if c.len() <= 16 {
-                        return match VArray::from_slice(&c) {
-                            Some(a) => Value::ArrU16(a),
-                            None => Value::None,
-                        };
                     } else {
-                        panic!("2:u8 arr is too long: {}", c.len());
+                        let b = c.into_boxed_slice();
+                        return Value::ArrU16(b);
                     }
                 }
                 let val = u16(map, endianness);
@@ -164,17 +155,12 @@ impl FieldDefinition {
                 *map = rest;
                 let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
                 if let Ok(s) = String::from_utf8(buf) {
-                    match super::GSTRING.lock() {
-                        Ok(mut h) => {
-                            let k = match h.keys().max() {
-                                Some(k) => k + 1,
-                                None => 0,
-                            };
-                            h.insert(k, s);
-                            Value::String(k)
-                        }
-                        Err(_) => Value::None,
-                    }
+                    let k = match global_string_map.keys().max() {
+                        Some(k) => k + 1,
+                        None => 0,
+                    };
+                    global_string_map.insert(k, s);
+                    Value::String(k)
                 } else {
                     Value::None
                 }
