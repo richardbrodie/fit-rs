@@ -13,9 +13,11 @@ mod sdk {
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
 }
+mod developer_fields;
 mod field_definition;
 mod io;
 
+use developer_fields::{DeveloperDataIdMsg, DeveloperFieldDefinition, FieldDescriptionMsg};
 use field_definition::FieldDefinition;
 use io::*;
 pub use sdk::MessageType;
@@ -43,6 +45,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
     let _fh = FileHeader::new(&mut buf);
     let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
     let mut records: Vec<Message> = Vec::with_capacity(2500);
+    let mut developer_data_ids: Vec<DeveloperDataIdMsg> = Vec::new();
+    let mut field_descriptions: Vec<FieldDescriptionMsg> = Vec::new();
 
     let mut fielddefinition_buffer: [FieldDefinition; 128];
     let mut datafield_buffer: [DataField; 128];
@@ -52,12 +56,12 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
         for elem in &mut datafield_buffer[..] {
             std::ptr::write(elem, DataField::new());
         }
-    };
+    }
 
     loop {
         let h = HeaderByte::new(&mut buf);
         if h.definition {
-            let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer);
+            let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
             let m = match_message_type(d.global_message_number);
@@ -202,6 +206,7 @@ impl FileHeader {
 #[derive(Debug)]
 struct HeaderByte {
     definition: bool,
+    dev_fields: bool,
     local_num: u8,
 }
 impl HeaderByte {
@@ -212,6 +217,7 @@ impl HeaderByte {
         }
         Self {
             definition: (b & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK,
+            dev_fields: (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK,
             local_num: b & LOCAL_MESSAGE_NUMBER_MASK,
         }
     }
@@ -221,9 +227,10 @@ struct DefinitionRecord {
     endianness: Endianness,
     global_message_number: u16,
     field_definitions: Vec<FieldDefinition>,
+    developer_fields: Option<Vec<DeveloperFieldDefinition>>,
 }
 impl DefinitionRecord {
-    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; 128]) -> Self {
+    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; 128], dev_fields: bool) -> Self {
         skip_bytes(map, 1);
         let endian = match u8(map) {
             1 => Endianness::Big,
@@ -236,11 +243,22 @@ impl DefinitionRecord {
         for i in 0..number_of_fields {
             buffer[i as usize] = FieldDefinition::new(map);
         }
+        let dev_fields: Option<Vec<DeveloperFieldDefinition>> = if dev_fields {
+            let number_of_fields = u8(map);
+            Some(
+                (0..number_of_fields)
+                    .map(|_| DeveloperFieldDefinition::new(map))
+                    .collect(),
+            )
+        } else {
+            None
+        };
 
         DefinitionRecord {
             endianness: endian,
             global_message_number,
             field_definitions: buffer[0..number_of_fields as usize].to_vec(),
+            developer_fields: dev_fields,
         }
     }
 }
