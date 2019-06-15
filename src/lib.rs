@@ -42,18 +42,16 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
 
     let _fh = FileHeader::new(&mut buf);
     let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
-    let mut records: Vec<Message> = Vec::new();
+    let mut records: Vec<Message> = Vec::with_capacity(2500);
 
-    let mut fielddefinition_buffer: [FieldDefinition; 96] = unsafe {
-        let arr: [FieldDefinition; 96] = std::mem::uninitialized();
-        arr
-    };
-    let mut datafield_buffer: [DataField; 64] = unsafe {
-        let mut arr: [DataField; 64] = std::mem::uninitialized();
-        for elem in &mut arr[..] {
+    let mut fielddefinition_buffer: [FieldDefinition; 128];
+    let mut datafield_buffer: [DataField; 128];
+    unsafe {
+        fielddefinition_buffer = std::mem::uninitialized();
+        datafield_buffer = std::mem::uninitialized();
+        for elem in &mut datafield_buffer[..] {
             std::ptr::write(elem, DataField::new());
         }
-        arr
     };
 
     loop {
@@ -75,10 +73,17 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 let fd = &d.field_definitions[i];
                 let d = fd.read_raw_field(d.endianness, &mut buf, skip, &mut global_string_map);
                 if !skip && d.is_some() {
-                    datafield_buffer[valid_fields] = DataField {
-                        field_num: fd.definition_number,
-                        value: d,
-                    };
+                    // it's okay to use unsafe here because we make sure to only read the number
+                    // of values we've written
+                    unsafe {
+                        std::ptr::write(
+                            &mut datafield_buffer[valid_fields],
+                            DataField {
+                                field_num: fd.definition_number,
+                                value: d,
+                            },
+                        );
+                    }
                     valid_fields += 1;
                 }
             }
@@ -148,7 +153,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         }
                     }
                 }
-                let final_values: Vec<DataField> = datafield_buffer[0..valid_fields].to_vec();
+                let final_values = datafield_buffer[0..valid_fields].to_vec();
                 let m = Message {
                     values: final_values,
                     kind: m,
@@ -162,6 +167,13 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
     }
     records
 }
+
+#[derive(Clone)]
+pub struct Message {
+    pub kind: MessageType,
+    pub values: Vec<DataField>,
+}
+
 #[derive(Debug)]
 struct FileHeader {
     filesize: u8,
@@ -211,7 +223,7 @@ struct DefinitionRecord {
     field_definitions: Vec<FieldDefinition>,
 }
 impl DefinitionRecord {
-    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; 96]) -> Self {
+    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; 128]) -> Self {
         skip_bytes(map, 1);
         let endian = match u8(map) {
             1 => Endianness::Big,
@@ -245,12 +257,6 @@ impl DataField {
             value: Value::None,
         }
     }
-}
-
-#[derive(Clone)]
-pub struct Message {
-    pub kind: MessageType,
-    pub values: Vec<DataField>,
 }
 
 #[derive(Clone, Debug)]
