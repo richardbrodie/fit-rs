@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
@@ -14,11 +15,9 @@ mod sdk {
     include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
 }
 mod developer_fields;
-mod field_definition;
 mod io;
 
-use developer_fields::{DeveloperDataIdMsg, DeveloperFieldDefinition, FieldDescriptionMsg};
-use field_definition::FieldDefinition;
+use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
 pub use sdk::MessageType;
 use sdk::{
@@ -30,7 +29,7 @@ const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
 
-const FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10_000_000;
+const _FIELD_DEFINITION_ARCHITECTURE: u8 = 0b10_000_000;
 const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
@@ -45,8 +44,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
     let _fh = FileHeader::new(&mut buf);
     let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
     let mut records: Vec<Message> = Vec::with_capacity(2500);
-    let mut developer_data_ids: Vec<DeveloperDataIdMsg> = Vec::new();
-    let mut field_descriptions: Vec<FieldDescriptionMsg> = Vec::new();
+    let mut developer_field_descriptions: Vec<DeveloperFieldDescription> = Vec::new();
 
     let mut fielddefinition_buffer: [FieldDefinition; 128];
     let mut datafield_buffer: [DataField; 128];
@@ -65,39 +63,76 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
             let m = match_message_type(d.global_message_number);
-            let skip = match m {
-                MessageType::None => true,
-                _ => false,
-            };
-
-            // read all fields, regardless if we already know we won't process the results further
-            // otherwise we'll lose our place in the file
+            let mut skip = false;
+            let mut dev_field_description = false;
+            match m {
+                MessageType::None => skip = true,
+                MessageType::FieldDescription => dev_field_description = true,
+                _ => {}
+            }
+            // we must read all fields, regardless if we already know we won't
+            // process the results further otherwise we'll lose our place in the file
             let mut valid_fields = 0;
-            for i in 0..d.field_definitions.len() {
-                let fd = &d.field_definitions[i];
-                let d = fd.read_raw_field(d.endianness, &mut buf, skip, &mut global_string_map);
-                if !skip && d.is_some() {
-                    // it's okay to use unsafe here because we make sure to only read the number
-                    // of values we've written
-                    unsafe {
-                        std::ptr::write(
-                            &mut datafield_buffer[valid_fields],
-                            DataField {
-                                field_num: fd.definition_number,
-                                value: d,
-                            },
-                        );
-                    }
-                    valid_fields += 1;
+            for fd in d.field_definitions.iter() {
+                let field = read_next_field(
+                    fd.base_type,
+                    fd.size,
+                    d.endianness,
+                    &mut buf,
+                    skip,
+                    &mut global_string_map,
+                );
+                if skip || !field.is_some() {
+                    continue;
                 }
+                // it's 'safe' to use `unsafe` here because we make sure to keep
+                // track of the number of values we've written and only read those
+                unsafe {
+                    std::ptr::write(
+                        &mut datafield_buffer[valid_fields],
+                        DataField {
+                            field_num: fd.definition_number,
+                            value: field,
+                        },
+                    );
+                }
+                valid_fields += 1;
+            }
+            if let Some(dev_fields) = &d.developer_fields {
+                dev_fields.iter().for_each(|df| {
+                    let def = developer_field_descriptions
+                        .iter()
+                        .find(|e| {
+                            e.developer_data_index == df.developer_data_index
+                                && e.field_definition_number == df.field_number
+                        })
+                        .unwrap();
+                    let bt = reverse_map_base_type(def.fit_base_type);
+                    let f = read_next_field(
+                        bt,
+                        df.size,
+                        d.endianness,
+                        &mut buf,
+                        skip,
+                        &mut global_string_map,
+                    );
+                    dbg!(f);
+                });
             }
 
+            if dev_field_description {
+                let d = DeveloperFieldDescription::new(
+                    datafield_buffer[0..valid_fields].to_vec(),
+                    &mut global_string_map,
+                );
+                developer_field_descriptions.push(d);
+            }
             // if we have a valid MessageType and some valid fields
-            if !skip && valid_fields > 0 {
+            else if !skip && valid_fields > 0 {
                 // no need to look these up until now
-                let fields: &[FieldType] = match_message_field(m);
                 let scales: &[Option<f32>] = match_message_scale(m);
                 let offsets: &[Option<i16>] = match_message_offset(m);
+                let fields: &[FieldType] = match_message_field(m);
 
                 // datafield_buffer is an array longer than we needed, so only take the number of elements we
                 // need
@@ -158,11 +193,12 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     }
                 }
                 let final_values = datafield_buffer[0..valid_fields].to_vec();
-                let m = Message {
+
+                let msg = Message {
                     values: final_values,
                     kind: m,
                 };
-                records.alloc().init(m);
+                records.alloc().init(msg);
             }
         }
         if buf.len() <= 14 {
@@ -212,9 +248,6 @@ struct HeaderByte {
 impl HeaderByte {
     fn new(map: &mut &[u8]) -> Self {
         let b = u8(map);
-        if (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK {
-            panic!("unsupported developer fields");
-        }
         Self {
             definition: (b & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK,
             dev_fields: (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK,
@@ -237,7 +270,7 @@ impl DefinitionRecord {
             0 => Endianness::Little,
             _ => panic!("unexpected endian byte"),
         };
-        let global_message_number = u16(map, Endianness::Little);
+        let global_message_number = u16(map, endian);
         let number_of_fields = u8(map);
 
         for i in 0..number_of_fields {
@@ -294,6 +327,7 @@ pub enum Value {
     Time(u32),
     ArrU8(Box<[u8]>),
     ArrU16(Box<[u16]>),
+    ArrU32(Box<[u32]>),
     None,
 }
 impl Value {
@@ -360,5 +394,329 @@ impl Value {
             }
             _ => (),
         }
+    }
+}
+impl From<Value> for u8 {
+    fn from(item: Value) -> Self {
+        match item {
+            Value::U8(v) => v,
+            _ => panic!("can't call this on a non-u8 variant"),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct FieldDefinition {
+    pub definition_number: usize,
+    pub size: u8,
+    pub base_type: u8,
+}
+impl FieldDefinition {
+    pub fn new(map: &mut &[u8]) -> Self {
+        let (buf, rest) = map.split_at(3);
+        *map = rest;
+        Self {
+            definition_number: buf[0].into(),
+            size: buf[1],
+            base_type: buf[2] & FIELD_DEFINITION_BASE_NUMBER,
+        }
+    }
+}
+
+fn reverse_map_base_type(i: u8) -> u8 {
+    match i {
+        _ => i,
+    }
+}
+
+#[allow(clippy::cognitive_complexity)]
+pub fn read_next_field(
+    base_type: u8,
+    size: u8,
+    endianness: Endianness,
+    map: &mut &[u8],
+    skip: bool,
+    global_string_map: &mut HashMap<u8, String>,
+) -> Value {
+    if skip {
+        skip_bytes(map, size);
+        return Value::None;
+    }
+    match base_type {
+        0 | 13 => {
+            // enum / byte
+            if size > 1 {
+                println!("0/13:enum/byte: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u8(map);
+                if val == 0xFF {
+                    Value::None
+                } else {
+                    Value::U8(val)
+                }
+            }
+        }
+        1 => {
+            // sint8
+            if size > 1 {
+                println!("1 i8: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = i8(map);
+                if val == 0x7F {
+                    Value::None
+                } else {
+                    Value::I8(val)
+                }
+            }
+        }
+        2 => {
+            // uint8
+            if size > 1 {
+                let (buf, rest) = map.split_at(size.into());
+                *map = rest;
+                let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
+                if c.is_empty() {
+                    Value::None
+                } else {
+                    let b = c.into_boxed_slice();
+                    Value::ArrU8(b)
+                }
+            } else {
+                let val = u8(map);
+                if val == 0xFF {
+                    Value::None
+                } else {
+                    Value::U8(val)
+                }
+            }
+        }
+        3 => {
+            // sint16
+            let number_of_values = size / 2;
+            if number_of_values > 1 {
+                println!("3 i16: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = i16(map, endianness);
+                if val == 0x7FFF {
+                    Value::None
+                } else {
+                    Value::I16(val)
+                }
+            }
+        }
+        4 => {
+            // uint16
+            let number_of_values = size / 2;
+            if number_of_values > 1 {
+                let c: Vec<_> = (0..number_of_values)
+                    .map(|_| u16(map, endianness))
+                    .filter(|x| *x != 0xFFFF)
+                    .collect();
+                if c.is_empty() {
+                    Value::None
+                } else {
+                    let b = c.into_boxed_slice();
+                    Value::ArrU16(b)
+                }
+            } else {
+                let val = u16(map, endianness);
+                if val == 0xFFFF {
+                    Value::None
+                } else {
+                    Value::U16(val)
+                }
+            }
+        }
+        5 => {
+            // sint32
+            let number_of_values = size / 4;
+            if number_of_values > 1 {
+                println!("5 i32: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = i32(map, endianness);
+                if val == 0x7F_FFF_FFF {
+                    Value::None
+                } else {
+                    Value::I32(val)
+                }
+            }
+        }
+        6 => {
+            // uint32
+            let number_of_values = size / 4;
+            if number_of_values > 1 {
+                let c: Vec<_> = (0..number_of_values)
+                    .map(|_| u32(map, endianness))
+                    .filter(|x| *x != 0xFFFF_FFFF)
+                    .collect();
+                if c.is_empty() {
+                    Value::None
+                } else {
+                    let b = c.into_boxed_slice();
+                    Value::ArrU32(b)
+                }
+            } else {
+                let val = u32(map, endianness);
+                if val == 0xFFFF_FFFF {
+                    Value::None
+                } else {
+                    Value::U32(val)
+                }
+            }
+        }
+        7 => {
+            // string
+            let (buf, rest) = map.split_at(size as usize);
+            *map = rest;
+            let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
+            if let Ok(s) = String::from_utf8(buf) {
+                let k = match global_string_map.keys().max() {
+                    Some(k) => k + 1,
+                    None => 0,
+                };
+                global_string_map.insert(k, s);
+                Value::String(k)
+            } else {
+                Value::None
+            }
+        }
+        8 => {
+            // float32
+            let number_of_values = size / 4;
+            if number_of_values > 1 {
+                println!("8 f32: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let uval = u32(map, endianness);
+                if uval == 0xFF_FFF_FFF {
+                    Value::None
+                } else {
+                    let val = f32::from_bits(uval);
+                    Value::F32(val)
+                }
+            }
+        }
+        9 => {
+            // float64
+            let number_of_values = size / 8;
+            if number_of_values > 1 {
+                println!("9 f64: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let uval = u64(map, endianness);
+                if uval == 0xF_FFF_FFF_FFF_FFF_FFF {
+                    Value::None
+                } else {
+                    let val = f64::from_bits(uval);
+                    Value::F64(val)
+                }
+            }
+        }
+        10 => {
+            // uint8z
+            if size > 1 {
+                println!("10:uint8z {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u8(map);
+                if val == 0x00 {
+                    Value::None
+                } else {
+                    Value::U8(val)
+                }
+            }
+        }
+        11 => {
+            // uint16z
+            let number_of_values = size / 2;
+            if number_of_values > 1 {
+                println!("11 u16: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u16(map, endianness);
+                if val == 0x0000 {
+                    Value::None
+                } else {
+                    Value::U16(val)
+                }
+            }
+        }
+        12 => {
+            // uint32z
+            let number_of_values = size / 4;
+            if number_of_values > 1 {
+                println!("12 u32: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u32(map, endianness);
+                if val == 0x0000_0000 {
+                    Value::None
+                } else {
+                    Value::U32(val)
+                }
+            }
+        }
+        14 => {
+            // sint64
+            let number_of_values = size / 8;
+            if number_of_values > 1 {
+                println!("14 i64: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = i64(map, endianness);
+                if val == 0x7_FFF_FFF_FFF_FFF_FFF {
+                    Value::None
+                } else {
+                    Value::I64(val)
+                }
+            }
+        }
+        15 => {
+            // uint64
+            let number_of_values = size / 8;
+            if number_of_values > 1 {
+                println!("15 u64: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u64(map, endianness);
+                if val == 0xF_FFF_FFF_FFF_FFF_FFF {
+                    Value::None
+                } else {
+                    Value::U64(val)
+                }
+            }
+        }
+        16 => {
+            // uint64z
+            let number_of_values = size / 8;
+            if number_of_values > 1 {
+                println!("16 u64: {}", size);
+                skip_bytes(map, size);
+                Value::None
+            } else {
+                let val = u64(map, endianness);
+                if val == 0x0_000_000_000_000_000 {
+                    Value::None
+                } else {
+                    Value::U64(val)
+                }
+            }
+        }
+        _ => Value::None,
     }
 }

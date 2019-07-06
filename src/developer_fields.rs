@@ -1,4 +1,5 @@
-use super::io::u8;
+use super::{DataField, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DeveloperFieldDefinition {
@@ -18,45 +19,37 @@ impl DeveloperFieldDefinition {
     }
 }
 
-pub struct DeveloperDataIdMsg {
-    application_id: [u8; 16],
-    developer_data_index: u8,
+#[derive(Debug, Clone)]
+pub struct DeveloperFieldDescription {
+    pub developer_data_index: u8,
+    pub field_definition_number: u8,
+    pub fit_base_type: u8,
+    pub field_name: String,
+    pub units: String,
 }
-impl DeveloperDataIdMsg {
-    fn new(map: &mut &[u8]) -> Self {
-        let (buf, rest) = map.split_at(16);
-        *map = rest;
-        let mut a: [u8; 16] = Default::default();
-        a.copy_from_slice(buf);
+impl DeveloperFieldDescription {
+    pub fn new(values: Vec<DataField>, global_string_map: &mut HashMap<u8, String>) -> Self {
+        let mut hmap: HashMap<usize, Value> = HashMap::with_capacity(6);
+        values.into_iter().for_each(|v| {
+            hmap.insert(v.field_num, v.value);
+        });
         Self {
-            application_id: a,
-            developer_data_index: u8(map),
-        }
-    }
-}
-
-pub struct FieldDescriptionMsg {
-    developer_data_index: u8,
-    field_definition_number: u8,
-    fit_base_type_id: u8,
-    field_name: String,
-    units: String,
-    native_field_num: u8,
-}
-impl FieldDescriptionMsg {
-    fn new(map: &mut &[u8]) -> Self {
-        let (buf, mut rest) = map.split_at(3);
-        let (field_name_buf, mut rest) = rest.split_at(64);
-        let (units_buf, mut rest) = rest.split_at(16);
-        *map = rest;
-
-        Self {
-            developer_data_index: buf[0],
-            field_definition_number: buf[1],
-            fit_base_type_id: buf[2],
-            field_name: std::str::from_utf8(field_name_buf).unwrap().to_string(),
-            units: std::str::from_utf8(units_buf).unwrap().to_string(),
-            native_field_num: u8(map),
+            developer_data_index: hmap.remove(&0).unwrap().into(),
+            field_definition_number: hmap.remove(&1).unwrap().into(),
+            fit_base_type: match hmap.remove(&2).unwrap() {
+                Value::U8(s) => s,
+                _ => panic!("can't call this on a non-u8 variant"),
+            },
+            field_name: match hmap.remove(&3).unwrap() {
+                Value::String(ref v) => global_string_map.remove(v).unwrap(),
+                Value::Enum(s) => s.to_owned(),
+                _ => panic!("can't call this on a non-string/enum variant"),
+            },
+            units: match hmap.remove(&8).unwrap() {
+                Value::String(ref v) => global_string_map.remove(v).unwrap(),
+                Value::Enum(s) => s.to_owned(),
+                _ => panic!("can't call this on a non-string/enum variant"),
+            },
         }
     }
 }
