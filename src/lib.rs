@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
@@ -360,12 +359,6 @@ pub enum Value {
     None,
 }
 impl Value {
-    fn is_some(&self) -> bool {
-        match self {
-            Value::None => false,
-            _ => true,
-        }
-    }
     fn scale(&mut self, val: f32) {
         match self {
             Value::U8(mut inner) => {

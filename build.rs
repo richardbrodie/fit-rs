@@ -29,7 +29,6 @@ fn main() {
         .from_reader(contents.as_bytes());
 
     let mut type_name = String::new();
-    let mut type_type = String::new();
     let mut type_buf: Vec<KeyValPair> = Vec::new();
     let mut types_store: HashMap<String, Vec<KeyValPair>> = HashMap::new();
 
@@ -39,7 +38,6 @@ fn main() {
                 types_store.insert(type_name.clone(), type_buf);
             }
             type_name = (&r[0]).into();
-            type_type = (&r[1]).into();
             type_buf = Vec::new();
         }
         if r[0].is_empty() && !r[2].is_empty() {

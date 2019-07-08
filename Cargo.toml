@@ -10,11 +10,11 @@ repository = "https://github.com/richardbrodie/fit-rs"
 fit_sdk_version = "20.85.00"
 
 [dependencies]
-memmap = "0.7.0"
-copyless = "0.1.4"
+memmap = "^0.7.0"
+copyless = "^0.1.4"
 
 [dev-dependencies]
-criterion = ""
+criterion = "^0.2.11"
 
 [build-dependencies]
 csv = "^1.0"

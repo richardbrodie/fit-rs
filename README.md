@@ -75,9 +75,9 @@ which will fetch the "Record" messages, for example
 
 The messages are trait objects of the form `Box<dyn DefinedMessageType>`. These respond to a few useful methods: primarily `#name()`, `#value(u16)`, and `#field_name_and_value(u16)`. To get all values at the same time there is also a `#all_values()` method. `FieldNameAndValue` structs contain two fields: a name, and a `Value`.
 
-A `Value` enum is a simple wrapper around most rust primitive types, such as u16 or i64 or f32. It implements a few helper methods to make it easier to extract the internal value, `#is_u8()`, `#is_str()` etc. It also implements a basic version of nightly rust's `TryFrom` trait that allows save *up*-casting, but not *down*-casting. That is, a `Value::U8` can be cast as a `u32`, but you can't get a `u8` from a `Value::U32`.
+A `Value` enum is a simple wrapper around most rust primitive types, such as u16 or i64 or f32. 
 
- Some things to watch out for:
+Some things to watch out for:
 
  - speed is recorded as m/s, rather than kph.
 
