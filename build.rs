@@ -96,7 +96,6 @@ fn main() {
 }
 
 fn write_custom_type_match(set: &HashSet<String>, types_store: &HashMap<String, Vec<KeyValPair>>) {
-    // fn match_custom_type(FieldType, u8) -> Option<&'static str>;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_CUSTOM_ENUM_FILE))
             .unwrap(),
@@ -106,7 +105,6 @@ fn write_custom_type_match(set: &HashSet<String>, types_store: &HashMap<String, 
         "pub fn enum_type(f: FieldType, k: u16) -> Option<&'static str> {{\n    match f {{",
     )
     .unwrap();
-    // for v in set.difference(&primitive_set()) {
     for f in set {
         if let Some(map) = types_store.get(f) {
             // dbg!(map);
@@ -130,27 +128,7 @@ fn write_custom_type_match(set: &HashSet<String>, types_store: &HashMap<String, 
     writeln!(&mut outfile, "        FieldType::None => None,",).unwrap();
     writeln!(&mut outfile, "        _ => None\n    }}\n}}",).unwrap();
 }
-
-// fn write_custom_type_funs(types_store: &HashMap<TypeKey, HashMap<String, String>>) -> String {
-// // fn my_custom_type(u8) -> Option<&'static str>;
-// let mut s = String::new();
-// for (k, v) in types_store {
-// let (n, t) = k;
-// let rt = map_primitive(&t);
-// s = format!(
-// "{}pub fn {}(k: {}) -> Option<&'static str> {{\n    match k {{\n",
-// s, n, rt
-// );
-// for (a, b) in v {
-// writeln!(&mut outfile, "        {} => Some({:?}),\n", s, a, b);
-// }
-// writeln!(&mut outfile, "        _ => None\n    }}\n}}\n", s);
-// }
-// s
-// }
-
 fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String, Vec<KeyValSet>>) {
-    // fn match_field_type(MessageType, u16) -> FieldType;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_MESSAGE_FIELD_FILE))
             .unwrap(),
@@ -200,7 +178,7 @@ fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String
     .unwrap();
     writeln!(
         &mut outfile,
-        "        _ => panic!(\"invalid variant used\")\n    }}\n}}",
+        "        _ => &[]\n    }}\n}}",
     )
     .unwrap();
 }
@@ -209,7 +187,6 @@ fn write_match_message_offset(
     set: &HashSet<&String>,
     msgs_store: &HashMap<String, Vec<KeyValSet>>,
 ) {
-    // fn match_field_type(MessageType, u16) -> FieldType;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_MESSAGE_OFFSET_FILE))
             .unwrap(),
@@ -259,13 +236,12 @@ fn write_match_message_offset(
     .unwrap();
     writeln!(
         &mut outfile,
-        "        _ => panic!(\"invalid variant used\")\n    }}\n}}",
+        "        _ => &[]\n    }}\n}}",
     )
     .unwrap();
 }
 
 fn write_match_message_scale(set: &HashSet<&String>, msgs_store: &HashMap<String, Vec<KeyValSet>>) {
-    // fn match_field_type(MessageType, u16) -> FieldType;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_MESSAGE_SCALE_FILE))
             .unwrap(),
@@ -316,13 +292,12 @@ fn write_match_message_scale(set: &HashSet<&String>, msgs_store: &HashMap<String
     .unwrap();
     writeln!(
         &mut outfile,
-        "        _ => panic!(\"invalid variant used\")\n    }}\n}}",
+        "        _ => &[]\n    }}\n}}",
     )
     .unwrap();
 }
 
 fn write_match_message_type(map: &Vec<KeyValPair>) {
-    // fn match_message_type(u16) -> MessageType;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_MESSAGE_TYPE_FILE))
             .unwrap(),
@@ -362,7 +337,6 @@ fn write_field_type_enum(set: &HashSet<String>) {
 }
 
 fn write_message_type_enum(set: &HashSet<&String>) {
-    // enum MessageType;
     let mut outfile = BufWriter::new(
         File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MESSAGE_TYPE_FILE)).unwrap(),
     );
@@ -380,23 +354,6 @@ fn write_message_type_enum(set: &HashSet<&String>) {
     writeln!(&mut outfile, "    None,\n}}").unwrap();
 }
 
-// fn map_primitive(p: &str) -> &str {
-// match p {
-// "enum" | "uint8" | "uint8z" => "u8",
-// "uint16" | "uint16z" => "u16",
-// "uint32" | "uint32z" => "u32",
-// _ => panic!("unrecognised type: '{:?}'", p),
-// }
-// }
-// fn primitive_set() -> HashSet<String> {
-// use std::iter::FromIterator;
-// const primitives: [&'static str; 18] = [
-// "bool", "enum", "sint8", "uint8", "sint16", "uint16", "sint32", "uint32", "string",
-// "float32", "float64", "uint8z", "uint16z", "uint32z", "byte", "sint64", "uint64",
-// "uint64z",
-// ];
-// HashSet::from_iter(primitives.iter().map(|x| x.to_string()))
-// }
 fn parse_u16(s: &str) -> Option<u16> {
     const HEX: &'static str = "0x";
     let l = s.to_lowercase();

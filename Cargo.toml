@@ -1,6 +1,6 @@
 [package]
 name = "fit"
-version = "0.4.0"
+version = "0.4.1"
 license = "MIT"
 authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
@@ -11,7 +11,7 @@ fit_sdk_version = "20.85.00"
 
 [dependencies]
 memmap = "0.7.0"
-copyless = ""
+copyless = "0.1.4"
 
 [dev-dependencies]
 criterion = ""
@@ -35,7 +35,6 @@ name = "read_file"
 harness = false
 
 [profile.release]
-debug = true
 opt-level = 3
 codegen-units = 1
 
