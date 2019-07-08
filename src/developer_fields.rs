@@ -12,7 +12,7 @@ impl DeveloperFieldDefinition {
         let (buf, rest) = map.split_at(3);
         *map = rest;
         Self {
-            field_number: buf[0],
+            field_number: buf[0].into(),
             size: buf[1],
             developer_data_index: buf[2],
         }

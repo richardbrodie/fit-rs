@@ -52,7 +52,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
         fielddefinition_buffer = std::mem::uninitialized();
         datafield_buffer = std::mem::uninitialized();
         for elem in &mut datafield_buffer[..] {
-            std::ptr::write(elem, DataField::new());
+            std::ptr::write(elem, DataField::default());
         }
     }
 
@@ -63,142 +63,152 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
             let m = match_message_type(d.global_message_number);
-            let mut skip = false;
-            let mut dev_field_description = false;
-            match m {
-                MessageType::None => skip = true,
-                MessageType::FieldDescription => dev_field_description = true,
-                _ => {}
-            }
+
             // we must read all fields, regardless if we already know we won't
             // process the results further otherwise we'll lose our place in the file
             let mut valid_fields = 0;
             for fd in d.field_definitions.iter() {
-                let field = read_next_field(
+                let data = read_next_field(
                     fd.base_type,
                     fd.size,
                     d.endianness,
                     &mut buf,
-                    skip,
+                    m == MessageType::None,
                     &mut global_string_map,
                 );
-                if skip || !field.is_some() {
-                    continue;
+
+                if data != Value::None {
+                    // it's 'safe' to use `unsafe` here because we make sure to keep
+                    // track of the number of values we've written and only read those
+                    unsafe {
+                        std::ptr::write(
+                            &mut datafield_buffer[valid_fields],
+                            DataField::new(fd.definition_number, data),
+                        );
+                    }
+                    valid_fields += 1;
                 }
-                // it's 'safe' to use `unsafe` here because we make sure to keep
-                // track of the number of values we've written and only read those
-                unsafe {
-                    std::ptr::write(
-                        &mut datafield_buffer[valid_fields],
-                        DataField {
-                            field_num: fd.definition_number,
-                            value: field,
-                        },
-                    );
-                }
-                valid_fields += 1;
-            }
-            if let Some(dev_fields) = &d.developer_fields {
-                dev_fields.iter().for_each(|df| {
-                    let def = developer_field_descriptions
-                        .iter()
-                        .find(|e| {
-                            e.developer_data_index == df.developer_data_index
-                                && e.field_definition_number == df.field_number
-                        })
-                        .unwrap();
-                    let bt = reverse_map_base_type(def.fit_base_type);
-                    let f = read_next_field(
-                        bt,
-                        df.size,
-                        d.endianness,
-                        &mut buf,
-                        skip,
-                        &mut global_string_map,
-                    );
-                    dbg!(f);
-                });
             }
 
-            if dev_field_description {
+            // if this is a developer field definition
+            if m == MessageType::FieldDescription {
                 let d = DeveloperFieldDescription::new(
                     datafield_buffer[0..valid_fields].to_vec(),
                     &mut global_string_map,
                 );
                 developer_field_descriptions.push(d);
-            }
-            // if we have a valid MessageType and some valid fields
-            else if !skip && valid_fields > 0 {
-                // no need to look these up until now
-                let scales: &[Option<f32>] = match_message_scale(m);
-                let offsets: &[Option<i16>] = match_message_offset(m);
-                let fields: &[FieldType] = match_message_field(m);
-
-                // datafield_buffer is an array longer than we needed, so only take the number of elements we
-                // need
-                for v in datafield_buffer.iter_mut().take(valid_fields) {
-                    if v.field_num >= fields.len() {
-                        continue;
-                    }
-                    match fields[v.field_num] {
-                        FieldType::None => (),
-                        FieldType::Coordinates => {
-                            if let Value::I32(ref inner) = v.value {
-                                let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
-                                std::mem::replace(&mut v.value, Value::F32(coord));
+            } else {
+                // if this record is a message that contains developer-defined fields read those too
+                let dev_fields = match &d.developer_fields {
+                    Some(dev_fields) => dev_fields
+                        .iter()
+                        .filter_map(|df| {
+                            let def = developer_field_descriptions
+                                .iter()
+                                .find(|e| {
+                                    e.developer_data_index == df.developer_data_index
+                                        && e.field_definition_number == df.field_number
+                                })
+                                .unwrap();
+                            let bt = reverse_map_base_type(def.fit_base_type);
+                            match read_next_field(
+                                bt,
+                                df.size,
+                                d.endianness,
+                                &mut buf,
+                                false,
+                                &mut global_string_map,
+                            ) {
+                                Value::None => None,
+                                v => Some(DevDataField::new(
+                                    df.developer_data_index,
+                                    df.field_number,
+                                    v,
+                                )),
                             }
-                        }
-                        FieldType::DateTime => {
-                            if let Value::U32(ref inner) = v.value {
-                                let date = *inner + PSEUDO_EPOCH;
-                                std::mem::replace(&mut v.value, Value::Time(date));
-                            }
-                        }
-                        FieldType::LocalDateTime => {
-                            if let Value::U32(ref inner) = v.value {
-                                let time = *inner + PSEUDO_EPOCH - 3600;
-                                std::mem::replace(&mut v.value, Value::Time(time));
-                            }
-                        }
-                        FieldType::String | FieldType::LocaltimeIntoDay => {}
-                        FieldType::Uint8
-                        | FieldType::Uint8z
-                        | FieldType::Uint16
-                        | FieldType::Uint16z
-                        | FieldType::Uint32
-                        | FieldType::Uint32z
-                        | FieldType::Sint8 => {
-                            if let Some(s) = scales.get(v.field_num) {
-                                if let Some(s) = s {
-                                    v.value.scale(*s);
-                                }
-                            }
-                            if let Some(o) = offsets.get(v.field_num) {
-                                if let Some(o) = o {
-                                    v.value.offset(*o)
-                                }
-                            }
-                        }
-                        f => {
-                            if let Value::U8(k) = v.value {
-                                if let Some(t) = enum_type(f, u16::from(k)) {
-                                    std::mem::replace(&mut v.value, Value::Enum(t));
-                                }
-                            } else if let Value::U16(k) = v.value {
-                                if let Some(t) = enum_type(f, k) {
-                                    std::mem::replace(&mut v.value, Value::Enum(t));
-                                }
-                            }
-                        }
-                    }
-                }
-                let final_values = datafield_buffer[0..valid_fields].to_vec();
-
-                let msg = Message {
-                    values: final_values,
-                    kind: m,
+                        })
+                        .collect(),
+                    None => Vec::new(),
                 };
-                records.alloc().init(msg);
+
+                // finally, if we have a valid MessageType and some valid fields, then we have a
+                // message we want to save
+                if m != MessageType::None && valid_fields > 0 {
+                    // no need to look these up until now
+                    let scales: &[Option<f32>] = match_message_scale(m);
+                    let offsets: &[Option<i16>] = match_message_offset(m);
+                    let fields: &[FieldType] = match_message_field(m);
+
+                    // datafield_buffer is an array longer than we needed, so only take the number of elements we
+                    // need
+                    for v in datafield_buffer.iter_mut().take(valid_fields) {
+                        // some fields have no proper SDK definition so just ignore them
+                        if v.field_num >= fields.len() {
+                            continue;
+                        }
+
+                        // see if the fields need any further processing
+                        match fields[v.field_num] {
+                            FieldType::None => (),
+                            FieldType::Coordinates => {
+                                if let Value::I32(ref inner) = v.value {
+                                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
+                                    std::mem::replace(&mut v.value, Value::F32(coord));
+                                }
+                            }
+                            FieldType::DateTime => {
+                                if let Value::U32(ref inner) = v.value {
+                                    let date = *inner + PSEUDO_EPOCH;
+                                    std::mem::replace(&mut v.value, Value::Time(date));
+                                }
+                            }
+                            FieldType::LocalDateTime => {
+                                if let Value::U32(ref inner) = v.value {
+                                    let time = *inner + PSEUDO_EPOCH - 3600;
+                                    std::mem::replace(&mut v.value, Value::Time(time));
+                                }
+                            }
+                            FieldType::String | FieldType::LocaltimeIntoDay => {}
+                            FieldType::Uint8
+                            | FieldType::Uint8z
+                            | FieldType::Uint16
+                            | FieldType::Uint16z
+                            | FieldType::Uint32
+                            | FieldType::Uint32z
+                            | FieldType::Sint8 => {
+                                if let Some(s) = scales.get(v.field_num) {
+                                    if let Some(s) = s {
+                                        v.value.scale(*s);
+                                    }
+                                }
+                                if let Some(o) = offsets.get(v.field_num) {
+                                    if let Some(o) = o {
+                                        v.value.offset(*o)
+                                    }
+                                }
+                            }
+                            f => {
+                                if let Value::U8(k) = v.value {
+                                    if let Some(t) = enum_type(f, u16::from(k)) {
+                                        std::mem::replace(&mut v.value, Value::Enum(t));
+                                    }
+                                } else if let Value::U16(k) = v.value {
+                                    if let Some(t) = enum_type(f, k) {
+                                        std::mem::replace(&mut v.value, Value::Enum(t));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let final_values = datafield_buffer[0..valid_fields].to_vec();
+
+                    let msg = Message {
+                        values: final_values,
+                        kind: m,
+                        dev_values: dev_fields,
+                    };
+                    records.alloc().init(msg);
+                }
             }
         }
         if buf.len() <= 14 {
@@ -212,6 +222,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
 pub struct Message {
     pub kind: MessageType,
     pub values: Vec<DataField>,
+    pub dev_values: Vec<DevDataField>,
 }
 
 #[derive(Debug)]
@@ -302,15 +313,33 @@ pub struct DataField {
     value: Value,
 }
 impl DataField {
-    fn new() -> Self {
+    fn new(fnum: usize, v: Value) -> Self {
         Self {
-            field_num: 0,
-            value: Value::None,
+            field_num: fnum,
+            value: v,
+        }
+    }
+    fn default() -> Self {
+        Self::new(0, Value::None)
+    }
+}
+#[derive(Clone, Debug)]
+pub struct DevDataField {
+    data_index: u8,
+    field_num: u8,
+    value: Value,
+}
+impl DevDataField {
+    fn new(ddi: u8, fnum: u8, v: Value) -> Self {
+        Self {
+            data_index: ddi,
+            field_num: fnum,
+            value: v,
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     U8(u8),
     I8(i8),

@@ -1,6 +1,6 @@
 [package]
 name = "fit"
-version = "0.4.0"
+version = "0.4.1"
 license = "MIT"
 authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
@@ -23,9 +23,9 @@ heck = "^0.3"
 [[bin]]
 name = "test_std"
 path = "bin/test_std.rs"
-#[[bin]]
-#name = "test_all"
-#path = "bin/test_all.rs"
+[[bin]]
+name = "test_all"
+path = "bin/test_all.rs"
 [[bin]]
 name = "test_dev_fields"
 path = "bin/test_dev_fields.rs"
@@ -35,7 +35,6 @@ name = "read_file"
 harness = false
 
 [profile.release]
-debug = true
 opt-level = 3
 codegen-units = 1
 
