@@ -9,7 +9,7 @@ It currently *does not* support FIT files using custom developer fields.
 
 ```toml
 [dependencies]
-fit = "0.2"
+fit = "0.4"
 ```
 
 ## Usage
@@ -19,61 +19,36 @@ extern crate env_logger;
 extern crate fit;
 
 use std::path::PathBuf;
+use fit::Message;
 
 fn main() {
-    env_logger::init();
     let filepath = PathBuf::from("fits/2913547417.fit");
-    let f = fit::FitFile::read(filepath);
+    let f: Vec<Message> = fit::read(filepath);
 }
 ```
 
-After reading a FIT file, a digest of message types can be inspected by calling
-
+A typical `Message` will look something like this:
 ```rust
-    println!("{:#?}", f.message_counts());
-```
-
-which will return a list similar to the following, showing respectively the name of the record type (as defined in the FIT SDK), and the number of records parsed
-
-```rust
-{
-    "File Id": 1,
-    "Record": 5401,
-    "Lap": 13,
-    "Event": 2,
-    "File Creator": 1,
-    "Activity": 1,
-    "Device Info": 1,
-    "Session": 1
+Message { 
+  kind: Record, 
+  values: [
+    DataField { field_num: 253, value: Time(1480856114) }, 
+    DataField { field_num: 0,   value: F32(57.710945)   }, 
+    DataField { field_num: 1,   value: F32(11.9945755)  }, 
+    DataField { field_num: 5,   value: U32(1151)        }, 
+    DataField { field_num: 29,  value: U32(0)           }, 
+    DataField { field_num: 2,   value: U16(2394)        }, 
+    DataField { field_num: 6,   value: U16(0)           }, 
+    DataField { field_num: 7,   value: U16(0)           }, 
+    DataField { field_num: 61,  value: U16(2234)        }, 
+    DataField { field_num: 66,  value: I16(442)         }, 
+    DataField { field_num: 3,   value: U8(113)          }, 
+    DataField { field_num: 13,  value: I8(21)           }
+  ], 
+  dev_values: [] 
 }
+
 ```
-
-Armed with this information, we can call
-
-```rust
-    f.messages().filter("Record").for_each(|r| {
-        println!("{:#?}", r.all_values());
-    })
-```
-
-which will fetch the "Record" messages, for example
-
-```rust
-[
-    position_lat: 57.71064 /f32,
-    position_long: 11.994529 /f32,
-    speed: 0 /f64,
-    heart_rate: 110 /u8,
-    power: 0 /u16,
-    temperature: 17 /i8,
-    accumulated_power: 965468 /u32,
-    distance: 46095.28 /f64,
-    altitude: 9 /f64,
-    timestamp: 1536170231 /time
-]
-```
-
-The messages are trait objects of the form `Box<dyn DefinedMessageType>`. These respond to a few useful methods: primarily `#name()`, `#value(u16)`, and `#field_name_and_value(u16)`. To get all values at the same time there is also a `#all_values()` method. `FieldNameAndValue` structs contain two fields: a name, and a `Value`.
 
 A `Value` enum is a simple wrapper around most rust primitive types, such as u16 or i64 or f32. 
 

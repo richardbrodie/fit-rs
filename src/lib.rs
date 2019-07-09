@@ -217,7 +217,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
     records
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
     pub kind: MessageType,
     pub values: Vec<DataField>,
@@ -308,8 +308,8 @@ impl DefinitionRecord {
 
 #[derive(Clone, Debug)]
 pub struct DataField {
-    field_num: usize,
-    value: Value,
+    pub field_num: usize,
+    pub value: Value,
 }
 impl DataField {
     fn new(fnum: usize, v: Value) -> Self {
@@ -324,9 +324,9 @@ impl DataField {
 }
 #[derive(Clone, Debug)]
 pub struct DevDataField {
-    data_index: u8,
-    field_num: u8,
-    value: Value,
+    pub data_index: u8,
+    pub field_num: u8,
+    pub value: Value,
 }
 impl DevDataField {
     fn new(ddi: u8, fnum: u8, v: Value) -> Self {
