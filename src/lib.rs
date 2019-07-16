@@ -24,9 +24,9 @@ use sdk::{
     FieldType,
 };
 
-const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000;
-const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000;
-const COMPRESSED_HEADER_TIME_OFFSET_MASK: u8 = 0b0001_1111;
+const COMPRESSED_HEADER_MASK: u8 = 0b1_00_00000;
+const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0_11_00000;
+const COMPRESSED_HEADER_TIME_OFFSET_MASK: u8 = 0b0_00_11111;
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -59,12 +59,9 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
         }
     }
 
+    let mut last_timestamp: u32 = 0;
     loop {
         let h = HeaderByte::new(&mut buf);
-        //        if h.compressed_header {
-        //            dbg!(&h);
-        //        }
-
         if h.definition {
             let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
             q.push_front((h.local_num, d));
@@ -85,6 +82,11 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 );
 
                 if data != Value::None {
+                    if fd.definition_number == 253 {
+                        if let Value::U32(timestamp) = data {
+                            last_timestamp = timestamp;
+                        }
+                    }
                     // it's 'safe' to use `unsafe` here because we make sure to keep
                     // track of the number of values we've written and only read those
                     unsafe {
@@ -207,6 +209,23 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                         }
                     }
+
+                    if h.compressed_header && h.time_offset.is_some() {
+                        let time_offset = h.time_offset.unwrap();
+                        let date: u32 = if time_offset as u32 >= (last_timestamp & 0x1F) {
+                            (last_timestamp & 0xFFFFFFE0) + time_offset as u32
+                        } else {
+                            (last_timestamp & 0xFFFFFFE0) + time_offset as u32 + 0x20
+                        };
+                        unsafe {
+                            std::ptr::write(
+                                &mut datafield_buffer[valid_fields],
+                                DataField::new(253, Value::Time(date + PSEUDO_EPOCH)),
+                            );
+                        }
+                        valid_fields += 1;
+                    }
+
                     let final_values = datafield_buffer[0..valid_fields].to_vec();
 
                     let msg = Message {
