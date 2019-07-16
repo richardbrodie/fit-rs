@@ -24,6 +24,10 @@ use sdk::{
     FieldType,
 };
 
+const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000;
+const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000;
+const COMPRESSED_HEADER_TIME_OFFSET_MASK: u8 = 0b0001_1111;
+
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
 const LOCAL_MESSAGE_NUMBER_MASK: u8 = 0x0F;
@@ -57,6 +61,10 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
 
     loop {
         let h = HeaderByte::new(&mut buf);
+        //        if h.compressed_header {
+        //            dbg!(&h);
+        //        }
+
         if h.definition {
             let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
             q.push_front((h.local_num, d));
@@ -251,17 +259,31 @@ impl FileHeader {
 
 #[derive(Debug)]
 struct HeaderByte {
+    compressed_header: bool,
     definition: bool,
     dev_fields: bool,
     local_num: u8,
+    time_offset: Option<u8>,
 }
 impl HeaderByte {
     fn new(map: &mut &[u8]) -> Self {
         let b = u8(map);
-        Self {
-            definition: (b & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK,
-            dev_fields: (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK,
-            local_num: b & LOCAL_MESSAGE_NUMBER_MASK,
+        if (b & COMPRESSED_HEADER_MASK) == COMPRESSED_HEADER_MASK {
+            Self {
+                compressed_header: true,
+                definition: false,
+                dev_fields: false,
+                local_num: (b & COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK) >> 5,
+                time_offset: Some(b & COMPRESSED_HEADER_TIME_OFFSET_MASK),
+            }
+        } else {
+            Self {
+                compressed_header: false,
+                definition: (b & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK,
+                dev_fields: (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK,
+                local_num: b & LOCAL_MESSAGE_NUMBER_MASK,
+                time_offset: None,
+            }
         }
     }
 }
