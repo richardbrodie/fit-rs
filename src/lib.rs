@@ -24,9 +24,11 @@ use sdk::{
     FieldType,
 };
 
-const COMPRESSED_HEADER_MASK: u8 = 0b1_00_00000;
-const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0_11_00000;
-const COMPRESSED_HEADER_TIME_OFFSET_MASK: u8 = 0b0_00_11111;
+const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000; // MASK: determine if the header has compressed timestamp
+const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000; // MASK: Extract message number from a compressed header
+const COMPRESSED_HEADER_TIME_OFFSET_MASK: u8 = 0b0001_1111; // MASK: Extract timestamp offset from a compressed header
+const COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER: u32 = 0b0010_0000; // Compressed header: rollover to eventually add when computing the new timestamp
+const COMPRESSED_HEADER_LAST_TIMESTAMP_MASK: u32 = 0xFFFF_FFE0; // Compressed header: mask to apply to the previous timestamp before adding the time offset
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -211,11 +213,15 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     }
 
                     if h.compressed_header && h.time_offset.is_some() {
-                        let time_offset = h.time_offset.unwrap();
-                        let date: u32 = if time_offset as u32 >= (last_timestamp & 0x1F) {
-                            (last_timestamp & 0xFFFFFFE0) + time_offset as u32
+                        let time_offset = u32::from(h.time_offset.unwrap());
+                        let date: u32 = if time_offset as u32
+                            >= (last_timestamp & u32::from(COMPRESSED_HEADER_TIME_OFFSET_MASK))
+                        {
+                            (last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK) + time_offset
                         } else {
-                            (last_timestamp & 0xFFFFFFE0) + time_offset as u32 + 0x20
+                            (last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK)
+                                + time_offset
+                                + COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
                         };
                         unsafe {
                             std::ptr::write(
