@@ -7,7 +7,9 @@ mod sdk {
     #![allow(clippy::unreadable_literal)]
     include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
+    include!(concat!(env!("OUT_DIR"), "/field_name_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
+    include!(concat!(env!("OUT_DIR"), "/match_message_field_name.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
@@ -18,11 +20,11 @@ mod io;
 
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
-pub use sdk::MessageType;
 use sdk::{
-    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
-    FieldType,
+    enum_type, match_message_field, match_message_field_name, match_message_offset,
+    match_message_scale, match_message_type, FieldType,
 };
+pub use sdk::{FieldName, MessageType};
 
 const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000; // MASK: determine if the header has compressed timestamp
 const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000; // MASK: Extract message number from a compressed header
@@ -39,6 +41,8 @@ const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
+
+const DEFAULT_FIELD_NAMES: [FieldName; 255] = [FieldName::None; 255];
 
 pub fn run(path: &PathBuf) -> Vec<Message> {
     let mut global_string_map: HashMap<u8, String> = HashMap::with_capacity(64);
@@ -69,6 +73,11 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
             let m = match_message_type(d.global_message_number);
+            let field_names: &[FieldName] = if m == MessageType::None {
+                &DEFAULT_FIELD_NAMES
+            } else {
+                match_message_field_name(m)
+            };
 
             // we must read all fields, regardless if we already know we won't
             // process the results further otherwise we'll lose our place in the file
@@ -84,17 +93,16 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 );
 
                 if data != Value::None {
-                    if fd.definition_number == 253 {
-                        if let Value::U32(timestamp) = data {
-                            last_timestamp = timestamp;
-                        }
-                    }
                     // it's 'safe' to use `unsafe` here because we make sure to keep
                     // track of the number of values we've written and only read those
                     unsafe {
                         std::ptr::write(
                             &mut datafield_buffer[valid_fields],
-                            DataField::new(fd.definition_number, data),
+                            DataField::new(
+                                fd.definition_number,
+                                field_names[fd.definition_number],
+                                data,
+                            ),
                         );
                     }
                     valid_fields += 1;
@@ -169,6 +177,9 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             FieldType::DateTime => {
                                 if let Value::U32(ref inner) = v.value {
+                                    if v.field_name == FieldName::Timestamp {
+                                        last_timestamp = *inner;
+                                    }
                                     let date = *inner + PSEUDO_EPOCH;
                                     std::mem::replace(&mut v.value, Value::Time(date));
                                 }
@@ -226,7 +237,11 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         unsafe {
                             std::ptr::write(
                                 &mut datafield_buffer[valid_fields],
-                                DataField::new(253, Value::Time(date + PSEUDO_EPOCH)),
+                                DataField::new(
+                                    253,
+                                    sdk::FieldName::Timestamp,
+                                    Value::Time(date + PSEUDO_EPOCH),
+                                ),
                             );
                         }
                         valid_fields += 1;
@@ -356,17 +371,19 @@ impl DefinitionRecord {
 #[derive(Clone, Debug)]
 pub struct DataField {
     pub field_num: usize,
+    pub field_name: sdk::FieldName,
     pub value: Value,
 }
 impl DataField {
-    fn new(fnum: usize, v: Value) -> Self {
+    fn new(fnum: usize, fname: sdk::FieldName, v: Value) -> Self {
         Self {
             field_num: fnum,
+            field_name: fname,
             value: v,
         }
     }
     fn default() -> Self {
-        Self::new(0, Value::None)
+        Self::new(0, sdk::FieldName::None, Value::None)
     }
 }
 #[derive(Clone, Debug)]
