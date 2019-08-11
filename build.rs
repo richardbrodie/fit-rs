@@ -407,7 +407,7 @@ fn write_field_name_enum(set: &HashSet<String>) {
     for v in set {
         writeln!(&mut outfile, "    {},", v.to_camel_case()).unwrap();
     }
-    writeln!(&mut outfile, "    None\n}}").unwrap();
+    writeln!(&mut outfile, "    Unknown,    None\n}}").unwrap();
 }
 
 fn write_message_type_enum(set: &HashSet<&String>) {

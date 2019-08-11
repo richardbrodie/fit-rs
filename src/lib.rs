@@ -100,7 +100,9 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             &mut datafield_buffer[valid_fields],
                             DataField::new(
                                 fd.definition_number,
-                                field_names[fd.definition_number],
+                                *field_names
+                                    .get(fd.definition_number)
+                                    .unwrap_or(&FieldName::Unknown),
                                 data,
                             ),
                         );
