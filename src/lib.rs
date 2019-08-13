@@ -42,8 +42,6 @@ const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
 
-const DEFAULT_FIELD_NAMES: [FieldName; 255] = [FieldName::None; 255];
-
 pub fn run(path: &PathBuf) -> Vec<Message> {
     let mut global_string_map: HashMap<u8, String> = HashMap::with_capacity(64);
     let file = File::open(path).unwrap();
@@ -73,11 +71,6 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
             let m = match_message_type(d.global_message_number);
-            let field_names: &[FieldName] = if m == MessageType::None {
-                &DEFAULT_FIELD_NAMES
-            } else {
-                match_message_field_name(m)
-            };
 
             // we must read all fields, regardless if we already know we won't
             // process the results further otherwise we'll lose our place in the file
@@ -98,13 +91,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     unsafe {
                         std::ptr::write(
                             &mut datafield_buffer[valid_fields],
-                            DataField::new(
-                                fd.definition_number,
-                                *field_names
-                                    .get(fd.definition_number)
-                                    .unwrap_or(&FieldName::Unknown),
-                                data,
-                            ),
+                            DataField::new(fd.definition_number, FieldName::None, data),
                         );
                     }
                     valid_fields += 1;
@@ -159,6 +146,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     let scales: &[Option<f32>] = match_message_scale(m);
                     let offsets: &[Option<i16>] = match_message_offset(m);
                     let fields: &[FieldType] = match_message_field(m);
+                    let field_names: &[FieldName] = match_message_field_name(m);
 
                     // datafield_buffer is an array longer than we needed, so only take the number of elements we
                     // need
@@ -166,6 +154,10 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         // some fields have no proper SDK definition so just ignore them
                         if v.field_num >= fields.len() {
                             continue;
+                        }
+
+                        if let Some(name) = field_names.get(v.field_num) {
+                            std::mem::replace(&mut v.field_name, *name);
                         }
 
                         // see if the fields need any further processing
