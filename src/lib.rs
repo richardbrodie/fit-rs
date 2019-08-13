@@ -7,24 +7,26 @@ mod sdk {
     #![allow(clippy::unreadable_literal)]
     include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
-    include!(concat!(env!("OUT_DIR"), "/field_name_enum.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_field_name.rs"));
+    include!(concat!(env!("OUT_DIR"), "/match_message_timestamp_field.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
+}
+pub mod field_definitions {
+    include!(concat!(env!("OUT_DIR"), "/field_definitions.rs"));
 }
 mod developer_fields;
 mod io;
 
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
+pub use sdk::MessageType;
 use sdk::{
-    enum_type, match_message_field, match_message_field_name, match_message_offset,
-    match_message_scale, match_message_type, FieldType,
+    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_timestamp_field, match_message_type,
+    FieldType,
 };
-pub use sdk::{FieldName, MessageType};
 
 const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000; // MASK: determine if the header has compressed timestamp
 const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000; // MASK: Extract message number from a compressed header
@@ -91,7 +93,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     unsafe {
                         std::ptr::write(
                             &mut datafield_buffer[valid_fields],
-                            DataField::new(fd.definition_number, FieldName::None, data),
+                            DataField::new(fd.definition_number, data),
                         );
                     }
                     valid_fields += 1;
@@ -146,7 +148,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     let scales: &[Option<f32>] = match_message_scale(m);
                     let offsets: &[Option<i16>] = match_message_offset(m);
                     let fields: &[FieldType] = match_message_field(m);
-                    let field_names: &[FieldName] = match_message_field_name(m);
+                    let timestamp_field_number = match_message_timestamp_field(m);
 
                     // datafield_buffer is an array longer than we needed, so only take the number of elements we
                     // need
@@ -154,10 +156,6 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         // some fields have no proper SDK definition so just ignore them
                         if v.field_num >= fields.len() {
                             continue;
-                        }
-
-                        if let Some(name) = field_names.get(v.field_num) {
-                            std::mem::replace(&mut v.field_name, *name);
                         }
 
                         // see if the fields need any further processing
@@ -171,7 +169,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             FieldType::DateTime => {
                                 if let Value::U32(ref inner) = v.value {
-                                    if v.field_name == FieldName::Timestamp {
+                                    if v.field_num == timestamp_field_number {
                                         last_timestamp = *inner;
                                     }
                                     let date = *inner + PSEUDO_EPOCH;
@@ -232,8 +230,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             std::ptr::write(
                                 &mut datafield_buffer[valid_fields],
                                 DataField::new(
-                                    253,
-                                    sdk::FieldName::Timestamp,
+                                    timestamp_field_number,
                                     Value::Time(date + PSEUDO_EPOCH),
                                 ),
                             );
@@ -365,19 +362,17 @@ impl DefinitionRecord {
 #[derive(Clone, Debug)]
 pub struct DataField {
     pub field_num: usize,
-    pub field_name: sdk::FieldName,
     pub value: Value,
 }
 impl DataField {
-    fn new(fnum: usize, fname: sdk::FieldName, v: Value) -> Self {
+    fn new(fnum: usize, v: Value) -> Self {
         Self {
             field_num: fnum,
-            field_name: fname,
             value: v,
         }
     }
     fn default() -> Self {
-        Self::new(0, sdk::FieldName::None, Value::None)
+        Self::new(0, Value::None)
     }
 }
 #[derive(Clone, Debug)]
