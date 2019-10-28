@@ -2,27 +2,28 @@ use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
 use std::{fs::File, path::PathBuf};
+use fitsdk::{FieldType,MessageType,match_messagetype,match_fieldtype,match_message_field,match_message_offset,match_message_scale};
 
-mod sdk {
-    #![allow(clippy::unreadable_literal)]
-    include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
-    include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
-}
+//mod sdk {
+//    #![allow(clippy::unreadable_literal)]
+//    include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
+//}
 mod developer_fields;
 mod io;
 
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
-pub use sdk::MessageType;
-use sdk::{
-    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
-    FieldType,
-};
+//pub use sdk::MessageType;
+//use sdk::{
+//    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
+//    FieldType,
+//};
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -61,7 +62,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
-            let m = match_message_type(d.global_message_number);
+            let m = match_messagetype(d.global_message_number);
 
             // we must read all fields, regardless if we already know we won't
             // process the results further otherwise we'll lose our place in the file
@@ -134,20 +135,20 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 // message we want to save
                 if m != MessageType::None && valid_fields > 0 {
                     // no need to look these up until now
-                    let scales: &[Option<f32>] = match_message_scale(m);
-                    let offsets: &[Option<i16>] = match_message_offset(m);
-                    let fields: &[FieldType] = match_message_field(m);
+                    let scales = match_message_scale(m);
+                    let offsets = match_message_offset(m);
+                    let fields = match_message_field(m);
 
                     // datafield_buffer is an array longer than we needed, so only take the number of elements we
                     // need
                     for v in datafield_buffer.iter_mut().take(valid_fields) {
                         // some fields have no proper SDK definition so just ignore them
-                        if v.field_num >= fields.len() {
-                            continue;
-                        }
+                        //if v.field_num >= fields.len() {
+                        //    continue;
+                        //}
 
                         // see if the fields need any further processing
-                        match fields[v.field_num] {
+                        match fields(v.field_num) {
                             FieldType::None => (),
                             FieldType::Coordinates => {
                                 if let Value::I32(ref inner) = v.value {
@@ -169,30 +170,26 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             FieldType::String | FieldType::LocaltimeIntoDay => {}
                             FieldType::Uint8
-                            | FieldType::Uint8z
+                            | FieldType::Uint8Z
                             | FieldType::Uint16
-                            | FieldType::Uint16z
+                            | FieldType::Uint16Z
                             | FieldType::Uint32
-                            | FieldType::Uint32z
+                            | FieldType::Uint32Z
                             | FieldType::Sint8 => {
-                                if let Some(s) = scales.get(v.field_num) {
-                                    if let Some(s) = s {
-                                        v.value.scale(*s);
-                                    }
+                                if let Some(s) = scales(v.field_num) {
+                                    v.value.scale(s);
                                 }
-                                if let Some(o) = offsets.get(v.field_num) {
-                                    if let Some(o) = o {
-                                        v.value.offset(*o)
-                                    }
+                                if let Some(o) = offsets(v.field_num) {
+                                    v.value.offset(o)
                                 }
                             }
                             f => {
                                 if let Value::U8(k) = v.value {
-                                    if let Some(t) = enum_type(f, u16::from(k)) {
+                                    if let Some(t) = match_fieldtype(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 } else if let Value::U16(k) = v.value {
-                                    if let Some(t) = enum_type(f, k) {
+                                    if let Some(t) = match_fieldtype(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 }

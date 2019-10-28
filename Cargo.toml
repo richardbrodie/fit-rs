@@ -12,13 +12,14 @@ fit_sdk_version = "20.85.00"
 [dependencies]
 memmap = "^0.7.0"
 copyless = "^0.1.4"
+fitsdk = { path = "../fitsdk-rs" }
 
 [dev-dependencies]
-criterion = "^0.2.11"
+criterion = "^0.3.0"
 
-[build-dependencies]
-csv = "^1.0"
-heck = "^0.3"
+#[build-dependencies]
+#csv = "^1.0"
+#heck = "^0.3"
 
 [[bin]]
 name = "test_std"
@@ -34,9 +35,9 @@ path = "bin/test_dev_fields.rs"
 name = "read_file"
 harness = false
 
-[profile.release]
-opt-level = 3
-codegen-units = 1
+#[profile.release]
+#opt-level = 3
+#codegen-units = 1
 
 
 #[[example]]
