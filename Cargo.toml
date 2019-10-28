@@ -1,6 +1,6 @@
 [package]
 name = "fit"
-version = "0.4.2"
+version = "0.5.0"
 license = "MIT"
 authors = ["Richard Brodie <richard@radagast.nu>"]
 edition = "2018"
@@ -17,10 +17,6 @@ fitsdk = { path = "../fitsdk-rs" }
 [dev-dependencies]
 criterion = "^0.3.0"
 
-#[build-dependencies]
-#csv = "^1.0"
-#heck = "^0.3"
-
 [[bin]]
 name = "test_std"
 path = "bin/test_std.rs"
@@ -35,20 +31,6 @@ path = "bin/test_dev_fields.rs"
 name = "read_file"
 harness = false
 
-#[profile.release]
-#opt-level = 3
-#codegen-units = 1
-
-
-#[[example]]
-#name = "show_message_counts"
-#path = "examples/show_message_counts.rs"
-
 [[example]]
 name = "iterate_records"
 path = "examples/iterate_records.rs"
-
-#[[example]]
-#name = "fetch_session"
-#path = "examples/fetch_session.rs"
-

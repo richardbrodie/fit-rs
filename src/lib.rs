@@ -2,28 +2,21 @@ use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
 use std::{fs::File, path::PathBuf};
-use fitsdk::{FieldType,MessageType,match_messagetype,match_fieldtype,match_message_field,match_message_offset,match_message_scale};
+use fitsdk::{
+    FieldType,
+    MessageType,
+    match_messagetype,
+    match_custom_field_value,
+    match_message_field,
+    match_message_offset,
+    match_message_scale
+};
 
-//mod sdk {
-//    #![allow(clippy::unreadable_literal)]
-//    include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
-//    include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
-//}
 mod developer_fields;
 mod io;
 
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
-//pub use sdk::MessageType;
-//use sdk::{
-//    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_type,
-//    FieldType,
-//};
 
 const DEFINITION_HEADER_MASK: u8 = 0x40;
 const DEVELOPER_FIELDS_MASK: u8 = 0x20;
@@ -110,9 +103,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                                         && e.field_definition_number == df.field_number
                                 })
                                 .unwrap();
-                            let bt = reverse_map_base_type(def.fit_base_type);
                             match read_next_field(
-                                bt,
+                                def.fit_base_type,
                                 df.size,
                                 d.endianness,
                                 &mut buf,
@@ -142,11 +134,6 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     // datafield_buffer is an array longer than we needed, so only take the number of elements we
                     // need
                     for v in datafield_buffer.iter_mut().take(valid_fields) {
-                        // some fields have no proper SDK definition so just ignore them
-                        //if v.field_num >= fields.len() {
-                        //    continue;
-                        //}
-
                         // see if the fields need any further processing
                         match fields(v.field_num) {
                             FieldType::None => (),
@@ -185,11 +172,11 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             f => {
                                 if let Value::U8(k) = v.value {
-                                    if let Some(t) = match_fieldtype(f, usize::from(k)) {
+                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 } else if let Value::U16(k) = v.value {
-                                    if let Some(t) = match_fieldtype(f, usize::from(k)) {
+                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 }
@@ -442,12 +429,6 @@ impl FieldDefinition {
     }
 }
 
-fn reverse_map_base_type(i: u8) -> u8 {
-    match i {
-        _ => i,
-    }
-}
-
 #[allow(clippy::cognitive_complexity)]
 pub fn read_next_field(
     base_type: u8,
@@ -469,11 +450,9 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u8(map);
-                if val == 0xFF {
-                    Value::None
-                } else {
-                    Value::U8(val)
+                match u8(map){
+                    0xFF => Value::None,
+                    v => Value::U8(v)
                 }
             }
         }
@@ -484,11 +463,9 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = i8(map);
-                if val == 0x7F {
-                    Value::None
-                } else {
-                    Value::I8(val)
+                match i8(map){
+                    0x7F => Value::None,
+                    v => Value::I8(v)
                 }
             }
         }
@@ -505,11 +482,9 @@ pub fn read_next_field(
                     Value::ArrU8(b)
                 }
             } else {
-                let val = u8(map);
-                if val == 0xFF {
-                    Value::None
-                } else {
-                    Value::U8(val)
+                match u8(map){
+                    0xFF => Value::None,
+                    v => Value::U8(v)
                 }
             }
         }
