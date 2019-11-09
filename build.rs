@@ -7,14 +7,16 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 
 type KeyValPair = (String, String);
-type KeyValSet = (String, String, String, String);
+type KeyValSet = (String, String, String, String, String);
 
 const MESSAGE_TYPE_FILE: &'static str = "message_type_enum.rs";
 const FIELD_TYPE_FILE: &'static str = "field_type_enum.rs";
+const FIELD_DEFINITIONS_FILE: &'static str = "field_definitions.rs";
 
 const MATCH_MESSAGE_TYPE_FILE: &'static str = "match_message_type.rs";
 
 const MATCH_MESSAGE_FIELD_FILE: &'static str = "match_message_field.rs";
+const MATCH_MESSAGE_TIMESTAMP_FIELD_FILE: &'static str = "match_message_timestamp_field.rs";
 const MATCH_MESSAGE_OFFSET_FILE: &'static str = "match_message_offset.rs";
 const MATCH_MESSAGE_SCALE_FILE: &'static str = "match_message_scale.rs";
 
@@ -60,6 +62,7 @@ fn main() {
     let mut msg_buf: Vec<KeyValSet> = Vec::new();
     let mut msgs_store: HashMap<String, Vec<KeyValSet>> = HashMap::new();
     let mut fields_set: HashSet<String> = HashSet::new();
+    let mut field_names: HashSet<String> = HashSet::new();
 
     for r in rdr.records().flatten() {
         if !r[0].is_empty() {
@@ -70,13 +73,20 @@ fn main() {
             msg_buf = Vec::new();
         }
         if r[0].is_empty() && !r[1].is_empty() && !r[2].is_empty() {
+            field_names.insert(r[2].into());
             fields_set.insert(r[3].into());
             let val = if r[2].ends_with("_lat") || r[2].ends_with("_long") {
                 "Coordinates"
             } else {
                 &r[3]
             };
-            msg_buf.push((r[1].into(), val.into(), r[6].into(), r[7].into()));
+            msg_buf.push((
+                r[1].into(),
+                val.into(),
+                r[6].into(),
+                r[7].into(),
+                r[2].into(),
+            ));
         }
     }
     msgs_store.insert(msg_name.clone(), msg_buf);
@@ -86,9 +96,11 @@ fn main() {
 
     write_field_type_enum(&fields_set);
     write_match_message_field(&msgs, &msgs_store);
+    write_field_definitions(&msgs, &msgs_store);
     write_match_message_offset(&msgs, &msgs_store);
     write_match_message_scale(&msgs, &msgs_store);
     write_match_message_type(&msg_types);
+    write_match_message_timestamp_field(&msgs_store);
     write_message_type_enum(&msgs);
     write_custom_type_match(&fields_set, &types_store);
 }
@@ -135,7 +147,7 @@ fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String
         let map = msgs_store.get(v.to_owned()).unwrap();
         let len = map
             .iter()
-            .map(|(x, _, _, _)| x.parse::<u16>().unwrap())
+            .map(|(x, _, _, _, _)| x.parse::<u16>().unwrap())
             .max()
             .unwrap()
             + 1;
@@ -146,7 +158,7 @@ fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String
         );
         for k in 0..len {
             let i = format!("{}", k);
-            if let Some((_, v, _, _)) = map.iter().find(|a| a.0 == i) {
+            if let Some((_, v, _, _, _)) = map.iter().find(|a| a.0 == i) {
                 s = format!("{}FieldType::{},", s, v.to_camel_case());
             } else {
                 s.push_str("FieldType::None,");
@@ -174,11 +186,25 @@ fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String
         "        MessageType::None => panic!(\"cannot call this with a None variant\"),",
     )
     .unwrap();
-    writeln!(
-        &mut outfile,
-        "        _ => &[]\n    }}\n}}",
-    )
-    .unwrap();
+    writeln!(&mut outfile, "        _ => &[]\n    }}\n}}",).unwrap();
+}
+
+fn write_field_definitions(
+    set: &HashSet<&String>,
+    msgs_store: &HashMap<String, Vec<KeyValSet>>,
+) {
+    let field_definition_type = "usize";
+    let mut outfile = BufWriter::new(
+        File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(FIELD_DEFINITIONS_FILE))
+            .unwrap(),
+    );
+    for v in set {
+        writeln!(&mut outfile, "pub mod {} {{", v).unwrap();
+        for (id, _, _, _, name) in msgs_store.get(v.to_owned()).unwrap().iter() {
+            writeln!(&mut outfile, "    pub const {}: {} = {};", name.to_uppercase(), field_definition_type, id).unwrap();
+        }
+        writeln!(&mut outfile, "}}").unwrap();
+    }
 }
 
 fn write_match_message_offset(
@@ -193,7 +219,7 @@ fn write_match_message_offset(
         let map = msgs_store.get(v.to_owned()).unwrap();
         let len = map
             .iter()
-            .map(|(x, _, _, _)| x.parse::<u16>().unwrap())
+            .map(|(x, _, _, _, _)| x.parse::<u16>().unwrap())
             .max()
             .unwrap()
             + 1;
@@ -204,7 +230,7 @@ fn write_match_message_offset(
         );
         for k in 0..len {
             let i = format!("{}", k);
-            if let Some((_, _, _, vv)) = map.iter().find(|a| a.0 == i && !a.3.is_empty()) {
+            if let Some((_, _, _, vv, _)) = map.iter().find(|a| a.0 == i && !a.3.is_empty()) {
                 s = format!("{}Some({}i16),", s, vv);
             } else {
                 s.push_str("None,");
@@ -248,7 +274,7 @@ fn write_match_message_scale(set: &HashSet<&String>, msgs_store: &HashMap<String
         let map = msgs_store.get(v.to_owned()).unwrap();
         let len = map
             .iter()
-            .map(|(x, _, _, _)| x.parse::<u16>().unwrap())
+            .map(|(x, _, _, _, _)| x.parse::<u16>().unwrap())
             .max()
             .unwrap()
             + 1;
@@ -259,7 +285,7 @@ fn write_match_message_scale(set: &HashSet<&String>, msgs_store: &HashMap<String
         );
         for k in 0..len {
             let i = format!("{}", k);
-            if let Some((_, _, vv, _)) = map.iter().find(|a| a.0 == i && !a.2.is_empty()) {
+            if let Some((_, _, vv, _, _)) = map.iter().find(|a| a.0 == i && !a.2.is_empty()) {
                 let vvv = vv.split(',').nth(0).unwrap();
                 s = format!("{}Some({}f32),", s, vvv);
             } else {
@@ -315,6 +341,20 @@ fn write_match_message_type(map: &Vec<KeyValPair>) {
         .unwrap();
     }
     writeln!(&mut outfile, "        _ => MessageType::None\n    }}\n}}").unwrap();
+}
+
+fn write_match_message_timestamp_field(msgs_store: &HashMap<String, Vec<KeyValSet>>) {
+    let mut outfile = BufWriter::new(
+        File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(MATCH_MESSAGE_TIMESTAMP_FIELD_FILE)).unwrap()
+    );
+    writeln!(&mut outfile, "pub fn match_message_timestamp_field(mt: MessageType) -> usize {{\n    match mt {{").unwrap();
+    for (k, v) in msgs_store {
+        let timestamp = v.iter().find(|(_, _, _, _, name) | name == "timestamp");
+        if let Some(fd) = timestamp {
+            writeln!(&mut outfile, "        MessageType::{} => {},", k.to_camel_case(), fd.0).unwrap();
+        }
+    }
+    writeln!(&mut outfile, "        _ => {}\n    }}\n}}", usize::max_value()).unwrap();
 }
 
 fn write_field_type_enum(set: &HashSet<String>) {
