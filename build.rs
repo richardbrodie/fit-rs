@@ -11,7 +11,6 @@ type KeyValSet = (String, String, String, String, String);
 
 const MESSAGE_TYPE_FILE: &'static str = "message_type_enum.rs";
 const FIELD_TYPE_FILE: &'static str = "field_type_enum.rs";
-const FIELD_DEFINITIONS_FILE: &'static str = "field_definitions.rs";
 
 const MATCH_MESSAGE_TYPE_FILE: &'static str = "match_message_type.rs";
 
@@ -62,7 +61,6 @@ fn main() {
     let mut msg_buf: Vec<KeyValSet> = Vec::new();
     let mut msgs_store: HashMap<String, Vec<KeyValSet>> = HashMap::new();
     let mut fields_set: HashSet<String> = HashSet::new();
-    let mut field_names: HashSet<String> = HashSet::new();
 
     for r in rdr.records().flatten() {
         if !r[0].is_empty() {
@@ -73,7 +71,6 @@ fn main() {
             msg_buf = Vec::new();
         }
         if r[0].is_empty() && !r[1].is_empty() && !r[2].is_empty() {
-            field_names.insert(r[2].into());
             fields_set.insert(r[3].into());
             let val = if r[2].ends_with("_lat") || r[2].ends_with("_long") {
                 "Coordinates"
@@ -96,7 +93,6 @@ fn main() {
 
     write_field_type_enum(&fields_set);
     write_match_message_field(&msgs, &msgs_store);
-    write_field_definitions(&msgs, &msgs_store);
     write_match_message_offset(&msgs, &msgs_store);
     write_match_message_scale(&msgs, &msgs_store);
     write_match_message_type(&msg_types);
@@ -117,7 +113,6 @@ fn write_custom_type_match(set: &HashSet<String>, types_store: &HashMap<String, 
     .unwrap();
     for f in set {
         if let Some(map) = types_store.get(f) {
-            // dbg!(map);
             writeln!(
                 &mut outfile,
                 "        FieldType::{} => match k {{",
@@ -187,24 +182,6 @@ fn write_match_message_field(set: &HashSet<&String>, msgs_store: &HashMap<String
     )
     .unwrap();
     writeln!(&mut outfile, "        _ => &[]\n    }}\n}}",).unwrap();
-}
-
-fn write_field_definitions(
-    set: &HashSet<&String>,
-    msgs_store: &HashMap<String, Vec<KeyValSet>>,
-) {
-    let field_definition_type = "usize";
-    let mut outfile = BufWriter::new(
-        File::create(Path::new(&env::var("OUT_DIR").unwrap()).join(FIELD_DEFINITIONS_FILE))
-            .unwrap(),
-    );
-    for v in set {
-        writeln!(&mut outfile, "pub mod {} {{", v).unwrap();
-        for (id, _, _, _, name) in msgs_store.get(v.to_owned()).unwrap().iter() {
-            writeln!(&mut outfile, "    pub const {}: {} = {};", name.to_uppercase(), field_definition_type, id).unwrap();
-        }
-        writeln!(&mut outfile, "}}").unwrap();
-    }
 }
 
 fn write_match_message_offset(

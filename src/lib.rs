@@ -14,9 +14,6 @@ mod sdk {
     include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
     include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
 }
-pub mod field_definitions {
-    include!(concat!(env!("OUT_DIR"), "/field_definitions.rs"));
-}
 mod developer_fields;
 mod io;
 
