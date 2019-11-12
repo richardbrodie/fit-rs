@@ -1,7 +1,7 @@
 use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, mem::MaybeUninit};
 
 mod sdk {
     #![allow(clippy::unreadable_literal)]
@@ -41,6 +41,8 @@ const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
 
+const MAGIC_BUFFER_LENGTH: usize = 128;
+
 pub fn run(path: &PathBuf) -> Vec<Message> {
     let mut global_string_map: HashMap<u8, String> = HashMap::with_capacity(64);
     let file = File::open(path).unwrap();
@@ -52,15 +54,20 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
     let mut records: Vec<Message> = Vec::with_capacity(2500);
     let mut developer_field_descriptions: Vec<DeveloperFieldDescription> = Vec::new();
 
-    let mut fielddefinition_buffer: [FieldDefinition; 128];
-    let mut datafield_buffer: [DataField; 128];
-    unsafe {
-        fielddefinition_buffer = std::mem::uninitialized();
-        datafield_buffer = std::mem::uninitialized();
-        for elem in &mut datafield_buffer[..] {
-            std::ptr::write(elem, DataField::default());
+    let mut datafield_buffer = {
+        let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] = unsafe { MaybeUninit::uninit().assume_init() };
+        for elem in &mut data[..] {
+            *elem = MaybeUninit::new(DataField::default());
         }
-    }
+        unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
+    };
+    let mut fielddefinition_buffer = {
+        let mut data: [MaybeUninit<FieldDefinition>; MAGIC_BUFFER_LENGTH] = unsafe { MaybeUninit::uninit().assume_init() };
+        for elem in &mut data[..] {
+            *elem = MaybeUninit::new(FieldDefinition::default());
+        }
+        unsafe { std::mem::transmute::<_, [FieldDefinition; MAGIC_BUFFER_LENGTH]>(data) }
+    };
 
     let mut last_timestamp: u32 = 0;
     loop {
@@ -323,7 +330,7 @@ struct DefinitionRecord {
     developer_fields: Option<Vec<DeveloperFieldDefinition>>,
 }
 impl DefinitionRecord {
-    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; 128], dev_fields: bool) -> Self {
+    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; MAGIC_BUFFER_LENGTH], dev_fields: bool) -> Self {
         skip_bytes(map, 1);
         let endian = match u8(map) {
             1 => Endianness::Big,
@@ -492,6 +499,9 @@ impl FieldDefinition {
             size: buf[1],
             base_type: buf[2] & FIELD_DEFINITION_BASE_NUMBER,
         }
+    }
+    fn default() -> Self {
+        Self { definition_number: 0, size: 0, base_type: 0 }
     }
 }
 
