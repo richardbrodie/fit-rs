@@ -14,7 +14,7 @@ memmap = "^0.7.0"
 copyless = "^0.1.4"
 
 [dev-dependencies]
-criterion = "^0.2.11"
+criterion = "^0.3"
 
 [build-dependencies]
 csv = "^1.0"
@@ -31,12 +31,13 @@ name = "test_dev_fields"
 path = "bin/test_dev_fields.rs"
 
 [[bench]]
-name = "read_file"
+name = "bench_read_file"
 harness = false
 
 [profile.release]
 opt-level = 3
 codegen-units = 1
+panic = "abort"
 
 
 #[[example]]
