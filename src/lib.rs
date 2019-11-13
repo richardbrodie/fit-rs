@@ -2,28 +2,22 @@ use copyless::VecHelper;
 use memmap::MmapOptions;
 use std::collections::{HashMap, VecDeque};
 use std::{fs::File, path::PathBuf, mem::MaybeUninit};
+use fitsdk::{
+    FieldType,
+    MessageType,
+    match_messagetype,
+    match_custom_field_value,
+    match_message_field,
+    match_message_offset,
+    match_message_scale,
+    match_message_timestamp_field
+};
 
-mod sdk {
-    #![allow(clippy::unreadable_literal)]
-    include!(concat!(env!("OUT_DIR"), "/message_type_enum.rs"));
-    include!(concat!(env!("OUT_DIR"), "/field_type_enum.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_field.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_timestamp_field.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_offset.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_scale.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_message_type.rs"));
-    include!(concat!(env!("OUT_DIR"), "/match_custom_enum.rs"));
-}
 mod developer_fields;
 mod io;
 
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use io::*;
-pub use sdk::MessageType;
-use sdk::{
-    enum_type, match_message_field, match_message_offset, match_message_scale, match_message_timestamp_field, match_message_type,
-    FieldType,
-};
 
 const COMPRESSED_HEADER_MASK: u8 = 0b1000_0000; // MASK: determine if the header has compressed timestamp
 const COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK: u8 = 0b0110_0000; // MASK: Extract message number from a compressed header
@@ -76,7 +70,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
             q.push_front((h.local_num, d));
         } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
-            let m = match_message_type(d.global_message_number);
+            let m = match_messagetype(d.global_message_number);
 
             // we must read all fields, regardless if we already know we won't
             // process the results further otherwise we'll lose our place in the file
@@ -124,9 +118,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                                         && e.field_definition_number == df.field_number
                                 })
                                 .unwrap();
-                            let bt = reverse_map_base_type(def.fit_base_type);
                             match read_next_field(
-                                bt,
+                                def.fit_base_type,
                                 df.size,
                                 d.endianness,
                                 &mut buf,
@@ -149,21 +142,15 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 // message we want to save
                 if m != MessageType::None && valid_fields > 0 {
                     // no need to look these up until now
-                    let scales: &[Option<f32>] = match_message_scale(m);
-                    let offsets: &[Option<i16>] = match_message_offset(m);
-                    let fields: &[FieldType] = match_message_field(m);
-                    let timestamp_field_number = match_message_timestamp_field(m);
+                    let scales = match_message_scale(m);
+                    let offsets = match_message_offset(m);
+                    let fields = match_message_field(m);
 
                     // datafield_buffer is an array longer than we needed, so only take the number of elements we
                     // need
                     for v in datafield_buffer.iter_mut().take(valid_fields) {
-                        // some fields have no proper SDK definition so just ignore them
-                        if v.field_num >= fields.len() {
-                            continue;
-                        }
-
                         // see if the fields need any further processing
-                        match fields[v.field_num] {
+                        match fields(v.field_num) {
                             FieldType::None => (),
                             FieldType::Coordinates => {
                                 if let Value::I32(ref inner) = v.value {
@@ -171,11 +158,15 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                                     std::mem::replace(&mut v.value, Value::F32(coord));
                                 }
                             }
+                            FieldType::Timestamp => {
+                                if let Value::U32(ref inner) = v.value {
+                                    last_timestamp = *inner;
+                                    let date = *inner + PSEUDO_EPOCH;
+                                    std::mem::replace(&mut v.value, Value::Time(date));
+                                }
+                            }
                             FieldType::DateTime => {
                                 if let Value::U32(ref inner) = v.value {
-                                    if v.field_num == timestamp_field_number {
-                                        last_timestamp = *inner;
-                                    }
                                     let date = *inner + PSEUDO_EPOCH;
                                     std::mem::replace(&mut v.value, Value::Time(date));
                                 }
@@ -188,30 +179,26 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             FieldType::String | FieldType::LocaltimeIntoDay => {}
                             FieldType::Uint8
-                            | FieldType::Uint8z
+                            | FieldType::Uint8Z
                             | FieldType::Uint16
-                            | FieldType::Uint16z
+                            | FieldType::Uint16Z
                             | FieldType::Uint32
-                            | FieldType::Uint32z
+                            | FieldType::Uint32Z
                             | FieldType::Sint8 => {
-                                if let Some(s) = scales.get(v.field_num) {
-                                    if let Some(s) = s {
-                                        v.value.scale(*s);
-                                    }
+                                if let Some(s) = scales(v.field_num) {
+                                    v.value.scale(s);
                                 }
-                                if let Some(o) = offsets.get(v.field_num) {
-                                    if let Some(o) = o {
-                                        v.value.offset(*o)
-                                    }
+                                if let Some(o) = offsets(v.field_num) {
+                                    v.value.offset(o)
                                 }
                             }
                             f => {
                                 if let Value::U8(k) = v.value {
-                                    if let Some(t) = enum_type(f, u16::from(k)) {
+                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 } else if let Value::U16(k) = v.value {
-                                    if let Some(t) = enum_type(f, k) {
+                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
                                         std::mem::replace(&mut v.value, Value::Enum(t));
                                     }
                                 }
@@ -219,27 +206,25 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         }
                     }
 
-                    if h.compressed_header && h.time_offset.is_some() {
-                        let time_offset = u32::from(h.time_offset.unwrap());
-                        let date: u32 = if time_offset as u32
-                            >= (last_timestamp & u32::from(COMPRESSED_HEADER_TIME_OFFSET_MASK))
+                    if let Some(time_offset) = h.compressed_timestamp() {
+                        let mut timestamp = last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
+                        if time_offset < (last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
                         {
-                            (last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK) + time_offset
-                        } else {
-                            (last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK)
-                                + time_offset
-                                + COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
+                            timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
                         };
-                        unsafe {
-                            std::ptr::write(
-                                &mut datafield_buffer[valid_fields],
-                                DataField::new(
-                                    timestamp_field_number,
-                                    Value::Time(date + PSEUDO_EPOCH),
-                                ),
-                            );
+
+                        if let Some(timestamp_field_number) = match_message_timestamp_field(m) {
+                            unsafe {
+                                std::ptr::write(
+                                    &mut datafield_buffer[valid_fields],
+                                    DataField::new(
+                                        timestamp_field_number,
+                                        Value::Time(timestamp + PSEUDO_EPOCH),
+                                    ),
+                                );
+                            }
+                            valid_fields += 1;
                         }
-                        valid_fields += 1;
                     }
 
                     let final_values = datafield_buffer[0..valid_fields].to_vec();
@@ -321,6 +306,13 @@ impl HeaderByte {
             }
         }
     }
+    fn compressed_timestamp(self) -> Option<u8> {
+        if self.compressed_header {
+            return self.time_offset;
+        } else {
+            return None;
+        }
+    }
 }
 
 struct DefinitionRecord {
@@ -360,7 +352,7 @@ impl DefinitionRecord {
             field_definitions: buffer[0..number_of_fields as usize].to_vec(),
             developer_fields: dev_fields,
         }
-    }
+    } 
 }
 
 #[derive(Clone, Debug)]
@@ -505,12 +497,6 @@ impl FieldDefinition {
     }
 }
 
-fn reverse_map_base_type(i: u8) -> u8 {
-    match i {
-        _ => i,
-    }
-}
-
 #[allow(clippy::cognitive_complexity)]
 pub fn read_next_field(
     base_type: u8,
@@ -532,11 +518,9 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u8(map);
-                if val == 0xFF {
-                    Value::None
-                } else {
-                    Value::U8(val)
+                match u8(map){
+                    0xFF => Value::None,
+                    v => Value::U8(v)
                 }
             }
         }
@@ -547,11 +531,9 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = i8(map);
-                if val == 0x7F {
-                    Value::None
-                } else {
-                    Value::I8(val)
+                match i8(map){
+                    0x7F => Value::None,
+                    v => Value::I8(v)
                 }
             }
         }
@@ -568,11 +550,9 @@ pub fn read_next_field(
                     Value::ArrU8(b)
                 }
             } else {
-                let val = u8(map);
-                if val == 0xFF {
-                    Value::None
-                } else {
-                    Value::U8(val)
+                match u8(map){
+                    0xFF => Value::None,
+                    v => Value::U8(v)
                 }
             }
         }

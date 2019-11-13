@@ -81,7 +81,6 @@ fn arr8(map: &mut &[u8]) -> [u8; 8] {
     buf.try_into().unwrap()
 }
 
-#[inline(always)]
 pub fn skip_bytes(map: &mut &[u8], s: u8) {
     let (_, rest) = map.split_at(s as usize);
     *map = rest;
