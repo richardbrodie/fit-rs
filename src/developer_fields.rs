@@ -28,7 +28,7 @@ pub struct DeveloperFieldDescription {
     pub units: String,
 }
 impl DeveloperFieldDescription {
-    pub fn new(values: Vec<DataField>, global_string_map: &mut HashMap<u8, String>) -> Self {
+    pub fn new(values: Vec<DataField>) -> Self {
         let mut hmap: HashMap<usize, Value> = HashMap::with_capacity(6);
         values.into_iter().for_each(|v| {
             hmap.insert(v.field_num, v.value);
@@ -41,12 +41,12 @@ impl DeveloperFieldDescription {
                 _ => panic!("can't call this on a non-u8 variant"),
             },
             field_name: match hmap.remove(&3).unwrap() {
-                Value::String(ref v) => global_string_map.remove(v).unwrap(),
+                Value::String(v) => v.to_string(),
                 Value::Enum(s) => s.to_owned(),
                 _ => panic!("can't call this on a non-string/enum variant"),
             },
             units: match hmap.remove(&8).unwrap() {
-                Value::String(ref v) => global_string_map.remove(v).unwrap(),
+                Value::String(v) => v.to_string(),
                 Value::Enum(s) => s.to_owned(),
                 _ => panic!("can't call this on a non-string/enum variant"),
             },

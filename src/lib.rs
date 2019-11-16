@@ -1,6 +1,7 @@
+use arrayvec::ArrayString;
 use copyless::VecHelper;
 use memmap::MmapOptions;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::{fs::File, path::PathBuf, mem::MaybeUninit};
 use fitsdk::{
     FieldType,
@@ -38,7 +39,6 @@ const PSEUDO_EPOCH: u32 = 631_065_600;
 const MAGIC_BUFFER_LENGTH: usize = 128;
 
 pub fn run(path: &PathBuf) -> Vec<Message> {
-    let mut global_string_map: HashMap<u8, String> = HashMap::with_capacity(64);
     let file = File::open(path).unwrap();
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
     let mut buf: &[u8] = &mmap;
@@ -82,19 +82,21 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     d.endianness,
                     &mut buf,
                     m == MessageType::None,
-                    &mut global_string_map,
                 );
 
-                if data != Value::None {
-                    // it's 'safe' to use `unsafe` here because we make sure to keep
-                    // track of the number of values we've written and only read those
-                    unsafe {
-                        std::ptr::write(
-                            &mut datafield_buffer[valid_fields],
-                            DataField::new(fd.definition_number, data),
-                        );
+                match data {
+                    Value::None => {},
+                    _ => {
+                        // it's 'safe' to use `unsafe` here because we make sure to keep
+                        // track of the number of values we've written and only read those
+                        unsafe {
+                            std::ptr::write(
+                                &mut datafield_buffer[valid_fields],
+                                DataField::new(fd.definition_number, data),
+                            );
+                        }
+                        valid_fields += 1;
                     }
-                    valid_fields += 1;
                 }
             }
 
@@ -102,7 +104,6 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
             if m == MessageType::FieldDescription {
                 let d = DeveloperFieldDescription::new(
                     datafield_buffer[0..valid_fields].to_vec(),
-                    &mut global_string_map,
                 );
                 developer_field_descriptions.push(d);
             } else {
@@ -124,7 +125,6 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                                 d.endianness,
                                 &mut buf,
                                 false,
-                                &mut global_string_map,
                             ) {
                                 Value::None => None,
                                 v => Some(DevDataField::new(
@@ -227,10 +227,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                         }
                     }
 
-                    let final_values = datafield_buffer[0..valid_fields].to_vec();
-
                     let msg = Message {
-                        values: final_values,
+                        values: datafield_buffer[0..valid_fields].to_vec(),
                         kind: m,
                         dev_values: dev_fields,
                     };
@@ -264,15 +262,15 @@ struct FileHeader {
 impl FileHeader {
     fn new(map: &mut &[u8]) -> Self {
         Self {
-            filesize: u8(map),
-            protocol: u8(map),
-            profile_version: u16(map, Endianness::Little),
-            num_record_bytes: u32(map, Endianness::Little),
+            filesize: read_u8(map),
+            protocol: read_u8(map),
+            profile_version: read_u16(map, Endianness::Little),
+            num_record_bytes: read_u32(map, Endianness::Little),
             fileext: {
                 let buf = arr4(map);
                 &buf == b".FIT"
             },
-            crc: u16(map, Endianness::Little),
+            crc: read_u16(map, Endianness::Little),
         }
     }
 }
@@ -287,7 +285,7 @@ struct HeaderByte {
 }
 impl HeaderByte {
     fn new(map: &mut &[u8]) -> Self {
-        let b = u8(map);
+        let b = read_u8(map);
         if (b & COMPRESSED_HEADER_MASK) == COMPRESSED_HEADER_MASK {
             Self {
                 compressed_header: true,
@@ -324,19 +322,19 @@ struct DefinitionRecord {
 impl DefinitionRecord {
     fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; MAGIC_BUFFER_LENGTH], dev_fields: bool) -> Self {
         skip_bytes(map, 1);
-        let endian = match u8(map) {
+        let endian = match read_u8(map) {
             1 => Endianness::Big,
             0 => Endianness::Little,
             _ => panic!("unexpected endian byte"),
         };
-        let global_message_number = u16(map, endian);
-        let number_of_fields = u8(map);
+        let global_message_number = read_u16(map, endian);
+        let number_of_fields = read_u8(map);
 
         for i in 0..number_of_fields {
             buffer[i as usize] = FieldDefinition::new(map);
         }
         let dev_fields: Option<Vec<DeveloperFieldDefinition>> = if dev_fields {
-            let number_of_fields = u8(map);
+            let number_of_fields = read_u8(map);
             Some(
                 (0..number_of_fields)
                     .map(|_| DeveloperFieldDefinition::new(map))
@@ -352,7 +350,7 @@ impl DefinitionRecord {
             field_definitions: buffer[0..number_of_fields as usize].to_vec(),
             developer_fields: dev_fields,
         }
-    } 
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -387,7 +385,7 @@ impl DevDataField {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Value {
     U8(u8),
     I8(i8),
@@ -396,15 +394,15 @@ pub enum Value {
     U32(u32),
     I32(i32),
     Enum(&'static str),
-    String(u8),
+    String(ArrayString<[u8;32]>),
     F32(f32),
     F64(f64),
     I64(i64),
     U64(u64),
     Time(u32),
-    ArrU8(Box<[u8]>),
-    ArrU16(Box<[u16]>),
-    ArrU32(Box<[u32]>),
+    ArrU8(Vec<u8>),
+    ArrU16(Vec<u16>),
+    ArrU32(Vec<u32>),
     None,
 }
 impl Value {
@@ -504,7 +502,6 @@ pub fn read_next_field(
     endianness: Endianness,
     map: &mut &[u8],
     skip: bool,
-    global_string_map: &mut HashMap<u8, String>,
 ) -> Value {
     if skip {
         skip_bytes(map, size);
@@ -518,7 +515,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                match u8(map){
+                match read_u8(map){
                     0xFF => Value::None,
                     v => Value::U8(v)
                 }
@@ -531,7 +528,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                match i8(map){
+                match read_i8(map){
                     0x7F => Value::None,
                     v => Value::I8(v)
                 }
@@ -546,11 +543,10 @@ pub fn read_next_field(
                 if c.is_empty() {
                     Value::None
                 } else {
-                    let b = c.into_boxed_slice();
-                    Value::ArrU8(b)
+                    Value::ArrU8(c)
                 }
             } else {
-                match u8(map){
+                match read_u8(map){
                     0xFF => Value::None,
                     v => Value::U8(v)
                 }
@@ -564,7 +560,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = i16(map, endianness);
+                let val = read_i16(map, endianness);
                 if val == 0x7FFF {
                     Value::None
                 } else {
@@ -577,17 +573,19 @@ pub fn read_next_field(
             let number_of_values = size / 2;
             if number_of_values > 1 {
                 let c: Vec<_> = (0..number_of_values)
-                    .map(|_| u16(map, endianness))
-                    .filter(|x| *x != 0xFFFF)
-                    .collect();
+                    .filter_map(|_| {
+                            match read_u16(map, endianness){
+                                0xFFFF => None,
+                                v => Some(v)
+                            }
+                        }).collect();
                 if c.is_empty() {
                     Value::None
                 } else {
-                    let b = c.into_boxed_slice();
-                    Value::ArrU16(b)
+                    Value::ArrU16(c)
                 }
             } else {
-                let val = u16(map, endianness);
+                let val = read_u16(map, endianness);
                 if val == 0xFFFF {
                     Value::None
                 } else {
@@ -603,7 +601,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = i32(map, endianness);
+                let val = read_i32(map, endianness);
                 if val == 0x7F_FFF_FFF {
                     Value::None
                 } else {
@@ -616,17 +614,19 @@ pub fn read_next_field(
             let number_of_values = size / 4;
             if number_of_values > 1 {
                 let c: Vec<_> = (0..number_of_values)
-                    .map(|_| u32(map, endianness))
-                    .filter(|x| *x != 0xFFFF_FFFF)
-                    .collect();
+                        .filter_map(|_| {
+                            match read_u32(map, endianness){
+                                0xFFFF_FFFF => None,
+                                v => Some(v)
+                            }
+                        }).collect();
                 if c.is_empty() {
                     Value::None
                 } else {
-                    let b = c.into_boxed_slice();
-                    Value::ArrU32(b)
+                    Value::ArrU32(c)
                 }
             } else {
-                let val = u32(map, endianness);
+                let val = read_u32(map, endianness);
                 if val == 0xFFFF_FFFF {
                     Value::None
                 } else {
@@ -639,13 +639,10 @@ pub fn read_next_field(
             let (buf, rest) = map.split_at(size as usize);
             *map = rest;
             let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
-            if let Ok(s) = String::from_utf8(buf) {
-                let k = match global_string_map.keys().max() {
-                    Some(k) => k + 1,
-                    None => 0,
-                };
-                global_string_map.insert(k, s);
-                Value::String(k)
+            if let Ok(s) = std::str::from_utf8(&buf) {
+                let mut string = ArrayString::<[_; 32]>::new();
+                string.push_str(s);
+                Value::String(string)
             } else {
                 Value::None
             }
@@ -658,7 +655,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let uval = u32(map, endianness);
+                let uval = read_u32(map, endianness);
                 if uval == 0xFF_FFF_FFF {
                     Value::None
                 } else {
@@ -675,7 +672,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let uval = u64(map, endianness);
+                let uval = read_u64(map, endianness);
                 if uval == 0xF_FFF_FFF_FFF_FFF_FFF {
                     Value::None
                 } else {
@@ -691,7 +688,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u8(map);
+                let val = read_u8(map);
                 if val == 0x00 {
                     Value::None
                 } else {
@@ -707,7 +704,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u16(map, endianness);
+                let val = read_u16(map, endianness);
                 if val == 0x0000 {
                     Value::None
                 } else {
@@ -723,7 +720,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u32(map, endianness);
+                let val = read_u32(map, endianness);
                 if val == 0x0000_0000 {
                     Value::None
                 } else {
@@ -739,7 +736,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = i64(map, endianness);
+                let val = read_i64(map, endianness);
                 if val == 0x7_FFF_FFF_FFF_FFF_FFF {
                     Value::None
                 } else {
@@ -755,7 +752,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u64(map, endianness);
+                let val = read_u64(map, endianness);
                 if val == 0xF_FFF_FFF_FFF_FFF_FFF {
                     Value::None
                 } else {
@@ -771,7 +768,7 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                let val = u64(map, endianness);
+                let val = read_u64(map, endianness);
                 if val == 0x0_000_000_000_000_000 {
                     Value::None
                 } else {
