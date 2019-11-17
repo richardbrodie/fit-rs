@@ -1,18 +1,13 @@
 use arrayvec::ArrayString;
 use copyless::VecHelper;
+use fitsdk::{
+    match_custom_field_value, match_message_field, match_message_offset, match_message_scale,
+    match_message_timestamp_field, match_messagetype, FieldType, MessageType,
+};
 use memmap::MmapOptions;
 use std::collections::VecDeque;
-use std::{fs::File, path::PathBuf, mem::MaybeUninit};
-use fitsdk::{
-    FieldType,
-    MessageType,
-    match_messagetype,
-    match_custom_field_value,
-    match_message_field,
-    match_message_offset,
-    match_message_scale,
-    match_message_timestamp_field
-};
+use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::{fs::File, mem::MaybeUninit, path::PathBuf};
 
 mod developer_fields;
 mod io;
@@ -41,22 +36,24 @@ const MAGIC_BUFFER_LENGTH: usize = 128;
 pub fn run(path: &PathBuf) -> Vec<Message> {
     let file = File::open(path).unwrap();
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
-    let mut buf: &[u8] = &mmap;
+    let mut buf = Cursor::new(mmap);
 
-    let _fh = FileHeader::new(&mut buf);
+    let fh = FileHeader::new(&mut buf);
     let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
     let mut records: Vec<Message> = Vec::with_capacity(2500);
     let mut developer_field_descriptions: Vec<DeveloperFieldDescription> = Vec::new();
 
     let mut datafield_buffer = {
-        let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] =
+            unsafe { MaybeUninit::uninit().assume_init() };
         for elem in &mut data[..] {
             *elem = MaybeUninit::new(DataField::default());
         }
         unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
     };
     let mut fielddefinition_buffer = {
-        let mut data: [MaybeUninit<FieldDefinition>; MAGIC_BUFFER_LENGTH] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut data: [MaybeUninit<FieldDefinition>; MAGIC_BUFFER_LENGTH] =
+            unsafe { MaybeUninit::uninit().assume_init() };
         for elem in &mut data[..] {
             *elem = MaybeUninit::new(FieldDefinition::default());
         }
@@ -85,7 +82,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 );
 
                 match data {
-                    Value::None => {},
+                    Value::None => {}
                     _ => {
                         // it's 'safe' to use `unsafe` here because we make sure to keep
                         // track of the number of values we've written and only read those
@@ -102,9 +99,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
 
             // if this is a developer field definition
             if m == MessageType::FieldDescription {
-                let d = DeveloperFieldDescription::new(
-                    datafield_buffer[0..valid_fields].to_vec(),
-                );
+                let d = DeveloperFieldDescription::new(datafield_buffer[0..valid_fields].to_vec());
                 developer_field_descriptions.push(d);
             } else {
                 // if this record is a message that contains developer-defined fields read those too
@@ -207,7 +202,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                     }
 
                     if let Some(time_offset) = h.compressed_timestamp() {
-                        let mut timestamp = last_timestamp & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
+                        let mut timestamp = last_timestamp
+                            & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
                         if time_offset < (last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
                         {
                             timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
@@ -236,7 +232,8 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                 }
             }
         }
-        if buf.len() <= 14 {
+        let r = buf.seek(SeekFrom::Current(0)).unwrap();
+        if r >= u64::from(fh.num_record_bytes + 14) {
             break;
         }
     }
@@ -260,7 +257,10 @@ struct FileHeader {
     crc: u16,
 }
 impl FileHeader {
-    fn new(map: &mut &[u8]) -> Self {
+    fn new<R>(map: &mut R) -> Self
+    where
+        R: Read,
+    {
         Self {
             filesize: read_u8(map),
             protocol: read_u8(map),
@@ -284,7 +284,10 @@ struct HeaderByte {
     time_offset: Option<u8>,
 }
 impl HeaderByte {
-    fn new(map: &mut &[u8]) -> Self {
+    fn new<R>(map: &mut R) -> Self
+    where
+        R: Read,
+    {
         let b = read_u8(map);
         if (b & COMPRESSED_HEADER_MASK) == COMPRESSED_HEADER_MASK {
             Self {
@@ -320,7 +323,14 @@ struct DefinitionRecord {
     developer_fields: Option<Vec<DeveloperFieldDefinition>>,
 }
 impl DefinitionRecord {
-    fn new(map: &mut &[u8], buffer: &mut [FieldDefinition; MAGIC_BUFFER_LENGTH], dev_fields: bool) -> Self {
+    fn new<R>(
+        map: &mut R,
+        buffer: &mut [FieldDefinition; MAGIC_BUFFER_LENGTH],
+        dev_fields: bool,
+    ) -> Self
+    where
+        R: Read + Seek,
+    {
         skip_bytes(map, 1);
         let endian = match read_u8(map) {
             1 => Endianness::Big,
@@ -394,7 +404,7 @@ pub enum Value {
     U32(u32),
     I32(i32),
     Enum(&'static str),
-    String(ArrayString<[u8;32]>),
+    String(ArrayString<[u8; 32]>),
     F32(f32),
     F64(f64),
     I64(i64),
@@ -481,9 +491,12 @@ pub struct FieldDefinition {
     pub base_type: u8,
 }
 impl FieldDefinition {
-    pub fn new(map: &mut &[u8]) -> Self {
-        let (buf, rest) = map.split_at(3);
-        *map = rest;
+    pub fn new<R>(map: &mut R) -> Self
+    where
+        R: Read,
+    {
+        let mut buf: [u8; 3] = [0; 3];
+        let _ = map.read(&mut buf);
         Self {
             definition_number: buf[0].into(),
             size: buf[1],
@@ -491,18 +504,25 @@ impl FieldDefinition {
         }
     }
     fn default() -> Self {
-        Self { definition_number: 0, size: 0, base_type: 0 }
+        Self {
+            definition_number: 0,
+            size: 0,
+            base_type: 0,
+        }
     }
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub fn read_next_field(
+pub fn read_next_field<R>(
     base_type: u8,
     size: u8,
     endianness: Endianness,
-    map: &mut &[u8],
+    map: &mut R,
     skip: bool,
-) -> Value {
+) -> Value
+where
+    R: Read + Seek,
+{
     if skip {
         skip_bytes(map, size);
         return Value::None;
@@ -515,9 +535,9 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                match read_u8(map){
+                match read_u8(map) {
                     0xFF => Value::None,
-                    v => Value::U8(v)
+                    v => Value::U8(v),
                 }
             }
         }
@@ -528,17 +548,17 @@ pub fn read_next_field(
                 skip_bytes(map, size);
                 Value::None
             } else {
-                match read_i8(map){
+                match read_i8(map) {
                     0x7F => Value::None,
-                    v => Value::I8(v)
+                    v => Value::I8(v),
                 }
             }
         }
         2 => {
             // uint8
             if size > 1 {
-                let (buf, rest) = map.split_at(size.into());
-                *map = rest;
+                let mut buf: Vec<_> = Vec::with_capacity(size.into());
+                let _ = map.take(size.into()).read_to_end(&mut buf);
                 let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
                 if c.is_empty() {
                     Value::None
@@ -546,9 +566,9 @@ pub fn read_next_field(
                     Value::ArrU8(c)
                 }
             } else {
-                match read_u8(map){
+                match read_u8(map) {
                     0xFF => Value::None,
-                    v => Value::U8(v)
+                    v => Value::U8(v),
                 }
             }
         }
@@ -573,12 +593,11 @@ pub fn read_next_field(
             let number_of_values = size / 2;
             if number_of_values > 1 {
                 let c: Vec<_> = (0..number_of_values)
-                    .filter_map(|_| {
-                            match read_u16(map, endianness){
-                                0xFFFF => None,
-                                v => Some(v)
-                            }
-                        }).collect();
+                    .filter_map(|_| match read_u16(map, endianness) {
+                        0xFFFF => None,
+                        v => Some(v),
+                    })
+                    .collect();
                 if c.is_empty() {
                     Value::None
                 } else {
@@ -614,12 +633,11 @@ pub fn read_next_field(
             let number_of_values = size / 4;
             if number_of_values > 1 {
                 let c: Vec<_> = (0..number_of_values)
-                        .filter_map(|_| {
-                            match read_u32(map, endianness){
-                                0xFFFF_FFFF => None,
-                                v => Some(v)
-                            }
-                        }).collect();
+                    .filter_map(|_| match read_u32(map, endianness) {
+                        0xFFFF_FFFF => None,
+                        v => Some(v),
+                    })
+                    .collect();
                 if c.is_empty() {
                     Value::None
                 } else {
@@ -636,8 +654,8 @@ pub fn read_next_field(
         }
         7 => {
             // string
-            let (buf, rest) = map.split_at(size as usize);
-            *map = rest;
+            let mut buf: Vec<_> = Vec::with_capacity(size.into());
+            let _ = map.take(size.into()).read_to_end(&mut buf);
             let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
             if let Ok(s) = std::str::from_utf8(&buf) {
                 let mut string = ArrayString::<[_; 32]>::new();

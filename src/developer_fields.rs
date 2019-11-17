@@ -1,5 +1,6 @@
 use super::{DataField, Value};
 use std::collections::HashMap;
+use std::io::Read;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DeveloperFieldDefinition {
@@ -8,9 +9,10 @@ pub struct DeveloperFieldDefinition {
     pub developer_data_index: u8,
 }
 impl DeveloperFieldDefinition {
-    pub fn new(map: &mut &[u8]) -> Self {
-        let (buf, rest) = map.split_at(3);
-        *map = rest;
+    pub fn new<R>(map: &mut R) -> Self
+    where R: Read {
+        let mut buf: [u8;3] = [0;3];
+        let _ = map.read(&mut buf);
         Self {
             field_number: buf[0].into(),
             size: buf[1],

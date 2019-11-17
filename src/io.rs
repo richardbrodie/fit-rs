@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::io::{Read,Seek,SeekFrom};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum Endianness {
@@ -6,15 +6,18 @@ pub enum Endianness {
     Big,
 }
 
-pub fn read_u8(map: &mut &[u8]) -> u8 {
-    let (val, rest) = map.split_first().unwrap();
-    *map = rest;
-    *val
+pub fn read_u8<R>(map: &mut R) -> u8
+where R: Read {
+    let mut buf: [u8;1] = [0];
+    let _ = map.read(&mut buf);
+    buf[0]
 }
-pub fn read_i8(map: &mut &[u8]) -> i8 {
+pub fn read_i8<R>(map: &mut R) -> i8
+where R: Read {
     read_u8(map) as i8
 }
-pub fn read_u16(map: &mut &[u8], endianness: Endianness) -> u16 {
+pub fn read_u16<R>(map: &mut R, endianness: Endianness) -> u16
+where R: Read {
     let arr = arr2(map);
     if endianness == Endianness::Little {
         u16::from_le_bytes(arr)
@@ -22,7 +25,8 @@ pub fn read_u16(map: &mut &[u8], endianness: Endianness) -> u16 {
         u16::from_be_bytes(arr)
     }
 }
-pub fn read_i16(map: &mut &[u8], endianness: Endianness) -> i16 {
+pub fn read_i16<R>(map: &mut R, endianness: Endianness) -> i16
+where R: Read {
     let arr = arr2(map);
     if endianness == Endianness::Little {
         i16::from_le_bytes(arr)
@@ -30,7 +34,8 @@ pub fn read_i16(map: &mut &[u8], endianness: Endianness) -> i16 {
         i16::from_be_bytes(arr)
     }
 }
-pub fn read_u32(map: &mut &[u8], endianness: Endianness) -> u32 {
+pub fn read_u32<R>(map: &mut R, endianness: Endianness) -> u32
+where R: Read {
     let arr = arr4(map);
     if endianness == Endianness::Little {
         u32::from_le_bytes(arr)
@@ -38,7 +43,8 @@ pub fn read_u32(map: &mut &[u8], endianness: Endianness) -> u32 {
         u32::from_be_bytes(arr)
     }
 }
-pub fn read_i32(map: &mut &[u8], endianness: Endianness) -> i32 {
+pub fn read_i32<R>(map: &mut R, endianness: Endianness) -> i32
+where R: Read {
     let arr = arr4(map);
     if endianness == Endianness::Little {
         i32::from_le_bytes(arr)
@@ -46,7 +52,8 @@ pub fn read_i32(map: &mut &[u8], endianness: Endianness) -> i32 {
         i32::from_be_bytes(arr)
     }
 }
-pub fn read_u64(map: &mut &[u8], endianness: Endianness) -> u64 {
+pub fn read_u64<R>(map: &mut R, endianness: Endianness) -> u64
+where R: Read {
     let arr = arr8(map);
     if endianness == Endianness::Little {
         u64::from_le_bytes(arr)
@@ -54,7 +61,8 @@ pub fn read_u64(map: &mut &[u8], endianness: Endianness) -> u64 {
         u64::from_be_bytes(arr)
     }
 }
-pub fn read_i64(map: &mut &[u8], endianness: Endianness) -> i64 {
+pub fn read_i64<R>(map: &mut R, endianness: Endianness) -> i64
+where R: Read {
     let arr = arr8(map);
     if endianness == Endianness::Little {
         i64::from_le_bytes(arr)
@@ -63,25 +71,28 @@ pub fn read_i64(map: &mut &[u8], endianness: Endianness) -> i64 {
     }
 }
 
-fn arr2(map: &mut &[u8]) -> [u8; 2] {
-    let (buf, rest) = map.split_at(2);
-    *map = rest;
-    buf.try_into().unwrap()
+fn arr2<R>(map: &mut R) -> [u8; 2]
+where R: Read {
+    let mut buf: [u8;2] = [0;2];
+    let _ = map.read(&mut buf);
+    buf
 }
 
-pub fn arr4(map: &mut &[u8]) -> [u8; 4] {
-    let (buf, rest) = map.split_at(4);
-    *map = rest;
-    buf.try_into().unwrap()
+pub fn arr4<R>(map: &mut R) -> [u8; 4]
+where R: Read {
+    let mut buf: [u8;4] = [0;4];
+    let _ = map.read(&mut buf);
+    buf
 }
 
-fn arr8(map: &mut &[u8]) -> [u8; 8] {
-    let (buf, rest) = map.split_at(8);
-    *map = rest;
-    buf.try_into().unwrap()
+fn arr8<R>(map: &mut R) -> [u8; 8]
+where R: Read {
+    let mut buf: [u8;8] = [0;8];
+    let _ = map.read(&mut buf);
+    buf
 }
 
-pub fn skip_bytes(map: &mut &[u8], s: u8) {
-    let (_, rest) = map.split_at(s as usize);
-    *map = rest;
+pub fn skip_bytes<R>(map: &mut R, s: u8)
+where R: Seek {
+    map.seek(SeekFrom::Current(s.into())).unwrap();
 }
