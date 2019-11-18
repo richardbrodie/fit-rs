@@ -1,10 +1,9 @@
 use arrayvec::ArrayString;
-use copyless::VecHelper;
 use fitsdk::{
     match_custom_field_value, match_message_field, match_message_offset, match_message_scale,
     match_message_timestamp_field, match_messagetype, FieldType, MessageType,
 };
-use memmap::MmapOptions;
+use memmap::{MmapOptions,Mmap};
 use std::collections::VecDeque;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::{fs::File, mem::MaybeUninit, path::PathBuf};
@@ -33,117 +32,83 @@ const PSEUDO_EPOCH: u32 = 631_065_600;
 
 const MAGIC_BUFFER_LENGTH: usize = 128;
 
-pub fn run(path: &PathBuf) -> Vec<Message> {
-    let file = File::open(path).unwrap();
-    let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
-    let mut buf = Cursor::new(mmap);
+pub struct Fit {
+    file_header: FileHeader,
+    buf: Cursor<Mmap>,
+    queue: VecDeque<(u8, DefinitionRecord)>,
+    developer_fields: Vec<DeveloperFieldDescription>,
+    field_buffer: [DataField; MAGIC_BUFFER_LENGTH],
+    last_timestamp: u32,
+}
+impl Fit {
+    pub fn new(path: &PathBuf) -> Self {
+        let file = File::open(path).unwrap();
+        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+        let mut buf = Cursor::new(mmap);
+        let datafield_buffer = {
+            let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+            for elem in &mut data[..] {
+                *elem = MaybeUninit::new(DataField::default());
+            }
+            unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
+        };
 
-    let fh = FileHeader::new(&mut buf);
-    let mut q: VecDeque<(u8, DefinitionRecord)> = VecDeque::new();
-    let mut records: Vec<Message> = Vec::with_capacity(2500);
-    let mut developer_field_descriptions: Vec<DeveloperFieldDescription> = Vec::new();
-
-    let mut datafield_buffer = {
-        let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] =
-            unsafe { MaybeUninit::uninit().assume_init() };
-        for elem in &mut data[..] {
-            *elem = MaybeUninit::new(DataField::default());
+        Self {
+            file_header: FileHeader::new(&mut buf),
+            buf: buf,
+            queue: VecDeque::new(),
+            developer_fields: Vec::new(),
+            field_buffer: datafield_buffer,
+            last_timestamp: 0,
         }
-        unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
-    };
-    let mut fielddefinition_buffer = {
-        let mut data: [MaybeUninit<FieldDefinition>; MAGIC_BUFFER_LENGTH] =
-            unsafe { MaybeUninit::uninit().assume_init() };
-        for elem in &mut data[..] {
-            *elem = MaybeUninit::new(FieldDefinition::default());
-        }
-        unsafe { std::mem::transmute::<_, [FieldDefinition; MAGIC_BUFFER_LENGTH]>(data) }
-    };
+    }
+}
+impl Iterator for Fit {
+    type Item = Message;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let r = self.buf.seek(SeekFrom::Current(0)).unwrap();
+            if r >= u64::from(self.file_header.num_record_bytes + 14) {
+                return None;
+            }
+            let h = HeaderByte::new(&mut self.buf);
+            if h.definition {
+                let d = DefinitionRecord::new(&mut self.buf, h.dev_fields);
+                self.queue.push_front((h.local_num, d));
+            } else {
+                let d = self.queue.iter().find(|x| x.0 == h.local_num);
+                let (_, definition) = d.unwrap();
+                let message_type = match_messagetype(definition.global_message_number);
+                let mut valid_fields = 0;
 
-    let mut last_timestamp: u32 = 0;
-    loop {
-        let h = HeaderByte::new(&mut buf);
-        if h.definition {
-            let d = DefinitionRecord::new(&mut buf, &mut fielddefinition_buffer, h.dev_fields);
-            q.push_front((h.local_num, d));
-        } else if let Some((_, d)) = q.iter().find(|x| x.0 == h.local_num) {
-            let m = match_messagetype(d.global_message_number);
-
-            // we must read all fields, regardless if we already know we won't
-            // process the results further otherwise we'll lose our place in the file
-            let mut valid_fields = 0;
-            for fd in d.field_definitions.iter() {
-                let data = read_next_field(
-                    fd.base_type,
-                    fd.size,
-                    d.endianness,
-                    &mut buf,
-                    m == MessageType::None,
-                );
-
-                match data {
-                    Value::None => {}
-                    _ => {
-                        // it's 'safe' to use `unsafe` here because we make sure to keep
-                        // track of the number of values we've written and only read those
+                for fd in definition.field_definitions.iter() {
+                    if message_type == MessageType::None {
+                        skip_bytes(&mut self.buf, fd.size);
+                    } else {
+                        let data = read_next_field(
+                            fd.base_type,
+                            fd.size,
+                            definition.endianness,
+                            &mut self.buf,
+                        );
                         unsafe {
                             std::ptr::write(
-                                &mut datafield_buffer[valid_fields],
+                                &mut self.field_buffer[valid_fields],
                                 DataField::new(fd.definition_number, data),
                             );
                         }
                         valid_fields += 1;
                     }
                 }
-            }
-
-            // if this is a developer field definition
-            if m == MessageType::FieldDescription {
-                let d = DeveloperFieldDescription::new(datafield_buffer[0..valid_fields].to_vec());
-                developer_field_descriptions.push(d);
-            } else {
-                // if this record is a message that contains developer-defined fields read those too
-                let dev_fields = match &d.developer_fields {
-                    Some(dev_fields) => dev_fields
-                        .iter()
-                        .filter_map(|df| {
-                            let def = developer_field_descriptions
-                                .iter()
-                                .find(|e| {
-                                    e.developer_data_index == df.developer_data_index
-                                        && e.field_definition_number == df.field_number
-                                })
-                                .unwrap();
-                            match read_next_field(
-                                def.fit_base_type,
-                                df.size,
-                                d.endianness,
-                                &mut buf,
-                                false,
-                            ) {
-                                Value::None => None,
-                                v => Some(DevDataField::new(
-                                    df.developer_data_index,
-                                    df.field_number,
-                                    v,
-                                )),
-                            }
-                        })
-                        .collect(),
-                    None => Vec::new(),
-                };
-
-                // finally, if we have a valid MessageType and some valid fields, then we have a
-                // message we want to save
-                if m != MessageType::None && valid_fields > 0 {
-                    // no need to look these up until now
-                    let scales = match_message_scale(m);
-                    let offsets = match_message_offset(m);
-                    let fields = match_message_field(m);
-
-                    // datafield_buffer is an array longer than we needed, so only take the number of elements we
-                    // need
-                    for v in datafield_buffer.iter_mut().take(valid_fields) {
+                if message_type == MessageType::FieldDescription {
+                    panic!("developer fields");
+                }
+                if message_type != MessageType::None && valid_fields > 0 {
+                    let scales = match_message_scale(message_type);
+                    let offsets = match_message_offset(message_type);
+                    let fields = match_message_field(message_type);
+                    for v in self.field_buffer.iter_mut().take(valid_fields) {
                         // see if the fields need any further processing
                         match fields(v.field_num) {
                             FieldType::None => (),
@@ -155,7 +120,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                             FieldType::Timestamp => {
                                 if let Value::U32(ref inner) = v.value {
-                                    last_timestamp = *inner;
+                                    // self.last_timestamp = *inner;
                                     let date = *inner + PSEUDO_EPOCH;
                                     std::mem::replace(&mut v.value, Value::Time(date));
                                 }
@@ -166,7 +131,7 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                                     std::mem::replace(&mut v.value, Value::Time(date));
                                 }
                             }
-                            FieldType::LocalDateTime => {
+                                                       FieldType::LocalDateTime => {
                                 if let Value::U32(ref inner) = v.value {
                                     let time = *inner + PSEUDO_EPOCH - 3600;
                                     std::mem::replace(&mut v.value, Value::Time(time));
@@ -200,19 +165,21 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             }
                         }
                     }
-
                     if let Some(time_offset) = h.compressed_timestamp() {
-                        let mut timestamp = last_timestamp
+                        let mut timestamp = self.last_timestamp
                             & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
-                        if time_offset < (last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
+                        if time_offset
+                            < (self.last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
                         {
-                            timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
+                                                        timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
                         };
 
-                        if let Some(timestamp_field_number) = match_message_timestamp_field(m) {
+                        if let Some(timestamp_field_number) =
+                            match_message_timestamp_field(message_type)
+                        {
                             unsafe {
                                 std::ptr::write(
-                                    &mut datafield_buffer[valid_fields],
+                                    &mut self.field_buffer[valid_fields],
                                     DataField::new(
                                         timestamp_field_number,
                                         Value::Time(timestamp + PSEUDO_EPOCH),
@@ -222,29 +189,58 @@ pub fn run(path: &PathBuf) -> Vec<Message> {
                             valid_fields += 1;
                         }
                     }
-
-                    let msg = Message {
-                        values: datafield_buffer[0..valid_fields].to_vec(),
-                        kind: m,
-                        dev_values: dev_fields,
-                    };
-                    records.alloc().init(msg);
+                    return Some(Message {
+                        values: self.field_buffer[0..valid_fields].to_vec(),
+                        kind: message_type,
+                        // dev_values: dev_fields,
+                    });
                 }
             }
         }
-        let r = buf.seek(SeekFrom::Current(0)).unwrap();
-        if r >= u64::from(fh.num_record_bytes + 14) {
-            break;
-        }
     }
-    records
 }
+
+//             // if this is a developer field definition
+//             if m == MessageType::FieldDescription {
+//                 let d = DeveloperFieldDescription::new(datafield_buffer[0..valid_fields].to_vec());
+//                 developer_field_descriptions.push(d);
+//             } else {
+//                 // if this record is a message that contains developer-defined fields read those too
+//                 let dev_fields = match &d.developer_fields {
+//                     Some(dev_fields) => dev_fields
+//                         .iter()
+//                         .filter_map(|df| {
+//                             let def = developer_field_descriptions
+//                                 .iter()
+//                                 .find(|e| {
+//                                     e.developer_data_index == df.developer_data_index
+//                                         && e.field_definition_number == df.field_number
+//                                 })
+//                                 .unwrap();
+//                             match read_next_field(
+//                                 def.fit_base_type,
+//                                 df.size,
+//                                 d.endianness,
+//                                 &mut self.buf,
+//                                 false,
+//                             ) {
+//                                 Value::None => None,
+//                                 v => Some(DevDataField::new(
+//                                     df.developer_data_index,
+//                                     df.field_number,
+//                                     v,
+//                                 )),
+//                             }
+//                         })
+//                         .collect(),
+//                     None => Vec::new(),
+//                 };
 
 #[derive(Clone, Debug)]
 pub struct Message {
     pub kind: MessageType,
     pub values: Vec<DataField>,
-    pub dev_values: Vec<DevDataField>,
+    // pub dev_values: Vec<DevDataField>,
 }
 
 #[derive(Debug)]
@@ -325,13 +321,13 @@ struct DefinitionRecord {
 impl DefinitionRecord {
     fn new<R>(
         map: &mut R,
-        buffer: &mut [FieldDefinition; MAGIC_BUFFER_LENGTH],
         dev_fields: bool,
     ) -> Self
     where
         R: Read + Seek,
     {
         skip_bytes(map, 1);
+        let mut buffer: Vec<FieldDefinition> = Vec::new();
         let endian = match read_u8(map) {
             1 => Endianness::Big,
             0 => Endianness::Little,
@@ -341,7 +337,7 @@ impl DefinitionRecord {
         let number_of_fields = read_u8(map);
 
         for i in 0..number_of_fields {
-            buffer[i as usize] = FieldDefinition::new(map);
+            buffer.push(FieldDefinition::new(map));
         }
         let dev_fields: Option<Vec<DeveloperFieldDefinition>> = if dev_fields {
             let number_of_fields = read_u8(map);
@@ -357,7 +353,7 @@ impl DefinitionRecord {
         DefinitionRecord {
             endianness: endian,
             global_message_number,
-            field_definitions: buffer[0..number_of_fields as usize].to_vec(),
+            field_definitions: buffer,
             developer_fields: dev_fields,
         }
     }
@@ -518,15 +514,14 @@ pub fn read_next_field<R>(
     size: u8,
     endianness: Endianness,
     map: &mut R,
-    skip: bool,
 ) -> Value
 where
     R: Read + Seek,
 {
-    if skip {
-        skip_bytes(map, size);
-        return Value::None;
-    }
+    // if skip {
+    //     skip_bytes(map, size);
+    //     return Value::None;
+    // }
     match base_type {
         0 | 13 => {
             // enum / byte

@@ -10,7 +10,6 @@ repository = "https://github.com/richardbrodie/fit-rs"
 
 [dependencies]
 memmap = "^0.7.0"
-copyless = "^0.1.4"
 arrayvec = "^0.5.1"
 fitsdk = { path = "../fitsdk-rs" }
 

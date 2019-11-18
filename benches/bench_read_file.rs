@@ -7,7 +7,10 @@ use criterion::Criterion;
 use std::path::PathBuf;
 
 fn bench_read_file(filepath: &PathBuf) {
-    fit::run(filepath);
+    let f = fit::Fit::new(&filepath);
+    for m in f {
+        m.kind;
+    }
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

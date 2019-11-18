@@ -2,5 +2,9 @@ use std::path::PathBuf;
 
 fn main() {
     let filepath = PathBuf::from("data/garmin_1000.fit");
-    fit::run(&filepath);
+    let f = fit::Fit::new(&filepath);
+    for m in f {
+        m.kind;
+    }
+    // dbg!(f.next());
 }
