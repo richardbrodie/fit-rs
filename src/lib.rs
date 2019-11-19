@@ -5,7 +5,8 @@ use fitsdk::{
 use memmap::{MmapOptions,Mmap};
 use std::collections::VecDeque;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::{fs::File, mem::MaybeUninit, path::PathBuf};
+use std::{fs::File, path::PathBuf};
+use copyless::VecHelper;
 
 mod developer_fields;
 mod io;
@@ -29,15 +30,13 @@ const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 const PSEUDO_EPOCH: u32 = 631_065_600;
 
-const MAGIC_BUFFER_LENGTH: usize = 128;
-
 pub struct Fit {
     //file_header: FileHeader,
     data_len: u64,
     buf: Cursor<Mmap>,
     queue: VecDeque<(u8, DefinitionRecord)>,
     developer_fields: Vec<DeveloperFieldDescription>,
-    field_buffer: [DataField; MAGIC_BUFFER_LENGTH],
+
     last_timestamp: u32,
 }
 impl Fit {
@@ -45,14 +44,6 @@ impl Fit {
         let file = File::open(path).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
         let mut buf = Cursor::new(mmap);
-        let datafield_buffer = {
-            let mut data: [MaybeUninit<DataField>; MAGIC_BUFFER_LENGTH] =
-                unsafe { MaybeUninit::uninit().assume_init() };
-            for elem in &mut data[..] {
-                *elem = MaybeUninit::new(DataField::default());
-            }
-            unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
-        };
 
         let fh = FileHeader::new(&mut buf);
         Self {
@@ -60,7 +51,6 @@ impl Fit {
             buf: buf,
             queue: VecDeque::new(),
             developer_fields: Vec::new(),
-            field_buffer: datafield_buffer,
             last_timestamp: 0,
         }
     }
@@ -83,8 +73,8 @@ impl Iterator for Fit {
                     Some((_,def)) => def
                 };
                 let message_type = match_messagetype(definition.global_message_number);
-                let mut valid_fields = 0;
                 let mut dev_fields: Option<Vec<DevDataField>> = None;
+                let mut values = Vec::with_capacity(definition.field_definitions.len());
 
                 for fd in definition.field_definitions.iter() {
                     if message_type == MessageType::None {
@@ -95,24 +85,19 @@ impl Iterator for Fit {
                             definition.endianness,
                             &mut self.buf,
                         ){
-                        unsafe {
-                            std::ptr::write(
-                                &mut self.field_buffer[valid_fields],
-                                DataField::new(fd.definition_number, data),
-                            );
-                        }
-                        valid_fields += 1;
+                        values.alloc().init(DataField::new(fd.definition_number, data));
                     }
                 }
 
                 // if this is a developer field definition
                 if message_type == MessageType::FieldDescription {
-                    let d = DeveloperFieldDescription::new(self.field_buffer[0..valid_fields].to_vec());
+                    let d = DeveloperFieldDescription::new(values);
                     self.developer_fields.push(d);
+                    continue;
                 } 
 
                 // this is not a valid message, so there's no more processing to do this loop
-                if message_type == MessageType::None || valid_fields == 0 {
+                if message_type == MessageType::None || values.is_empty() {
                     continue;
                 }
                 
@@ -138,7 +123,7 @@ impl Iterator for Fit {
                 let scales = match_message_scale(message_type);
                 let offsets = match_message_offset(message_type);
                 let fields = match_message_field(message_type);
-                for v in self.field_buffer.iter_mut().take(valid_fields) {
+                for v in &mut values {
                     // see if the fields need any further processing
                     match fields(v.field_num) {
                         FieldType::None => (),
@@ -208,21 +193,18 @@ impl Iterator for Fit {
                     if let Some(timestamp_field_number) =
                         match_message_timestamp_field(message_type)
                     {
-                        unsafe {
-                            std::ptr::write(
-                                &mut self.field_buffer[valid_fields],
+                        values.alloc().init(
                                 DataField::new(
                                     timestamp_field_number,
                                     Value::Time(timestamp + PSEUDO_EPOCH),
-                                ),
+                                )
                             );
-                        }
-                        valid_fields += 1;
                     }
                 }
                 
+                values.shrink_to_fit();
                 return Some(Message {
-                    values: self.field_buffer[0..valid_fields].to_vec(),
+                    values: values,
                     kind: message_type,
                     dev_values: dev_fields,
                 });
@@ -366,9 +348,6 @@ impl DataField {
             field_num: fnum,
             value: v,
         }
-    }
-    fn default() -> Self {
-        Self::new(0, Value::U8(0))
     }
 }
 #[derive(Clone, Debug)]
