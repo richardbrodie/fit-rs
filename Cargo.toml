@@ -10,7 +10,6 @@ repository = "https://github.com/richardbrodie/fit-rs"
 
 [dependencies]
 memmap = "^0.7.0"
-arrayvec = "^0.5.1"
 fitsdk = { path = "../fitsdk-rs" }
 
 [dev-dependencies]
@@ -19,12 +18,12 @@ criterion = "^0.3.0"
 [profile.release]
 panic = 'abort'
 
-[[bin]]
-name = "test_std"
-path = "bin/test_std.rs"
 #[[bin]]
-#name = "test_all"
-#path = "bin/test_all.rs"
+#name = "test_std"
+#path = "bin/test_std.rs"
+[[bin]]
+name = "test_all"
+path = "bin/test_all.rs"
 #[[bin]]
 #name = "test_dev_fields"
 #path = "bin/test_dev_fields.rs"

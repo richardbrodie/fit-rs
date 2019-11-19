@@ -4,7 +4,10 @@ fn main() {
         let path = entry.path();
         if let Some(s) = &path.extension() {
             if let Some("fit") = s.to_str() {
-                fit::run(&path);
+                let f = fit::Fit::new(&path);
+                for m in f {
+                    m.kind;
+                }
             }
         }
     }

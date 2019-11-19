@@ -1,4 +1,3 @@
-use arrayvec::ArrayString;
 use fitsdk::{
     match_custom_field_value, match_message_field, match_message_offset, match_message_scale,
     match_message_timestamp_field, match_messagetype, FieldType, MessageType,
@@ -33,7 +32,8 @@ const PSEUDO_EPOCH: u32 = 631_065_600;
 const MAGIC_BUFFER_LENGTH: usize = 128;
 
 pub struct Fit {
-    file_header: FileHeader,
+    //file_header: FileHeader,
+    data_len: u64,
     buf: Cursor<Mmap>,
     queue: VecDeque<(u8, DefinitionRecord)>,
     developer_fields: Vec<DeveloperFieldDescription>,
@@ -54,8 +54,9 @@ impl Fit {
             unsafe { std::mem::transmute::<_, [DataField; MAGIC_BUFFER_LENGTH]>(data) }
         };
 
+        let fh = FileHeader::new(&mut buf);
         Self {
-            file_header: FileHeader::new(&mut buf),
+            data_len: u64::from(fh.num_record_bytes + 14),
             buf: buf,
             queue: VecDeque::new(),
             developer_fields: Vec::new(),
@@ -69,7 +70,7 @@ impl Iterator for Fit {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let r = self.buf.seek(SeekFrom::Current(0)).unwrap();
-            if r >= u64::from(self.file_header.num_record_bytes + 14) {
+            if r > self.data_len {
                 return None;
             }
             let h = HeaderByte::new(&mut self.buf);
@@ -77,21 +78,23 @@ impl Iterator for Fit {
                 let d = DefinitionRecord::new(&mut self.buf, h.dev_fields);
                 self.queue.push_front((h.local_num, d));
             } else {
-                let d = self.queue.iter().find(|x| x.0 == h.local_num);
-                let (_, definition) = d.unwrap();
+                let definition = match self.queue.iter().find(|x| x.0 == h.local_num) {
+                    None => continue,
+                    Some((_,def)) => def
+                };
                 let message_type = match_messagetype(definition.global_message_number);
                 let mut valid_fields = 0;
+                let mut dev_fields: Option<Vec<DevDataField>> = None;
 
                 for fd in definition.field_definitions.iter() {
                     if message_type == MessageType::None {
                         skip_bytes(&mut self.buf, fd.size);
-                    } else {
-                        let data = read_next_field(
+                    } else if let Some(data) = read_next_field(
                             fd.base_type,
                             fd.size,
                             definition.endianness,
                             &mut self.buf,
-                        );
+                        ){
                         unsafe {
                             std::ptr::write(
                                 &mut self.field_buffer[valid_fields],
@@ -101,146 +104,139 @@ impl Iterator for Fit {
                         valid_fields += 1;
                     }
                 }
-                if message_type == MessageType::FieldDescription {
-                    panic!("developer fields");
-                }
-                if message_type != MessageType::None && valid_fields > 0 {
-                    let scales = match_message_scale(message_type);
-                    let offsets = match_message_offset(message_type);
-                    let fields = match_message_field(message_type);
-                    for v in self.field_buffer.iter_mut().take(valid_fields) {
-                        // see if the fields need any further processing
-                        match fields(v.field_num) {
-                            FieldType::None => (),
-                            FieldType::Coordinates => {
-                                if let Value::I32(ref inner) = v.value {
-                                    let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
-                                    std::mem::replace(&mut v.value, Value::F32(coord));
-                                }
-                            }
-                            FieldType::Timestamp => {
-                                if let Value::U32(ref inner) = v.value {
-                                    // self.last_timestamp = *inner;
-                                    let date = *inner + PSEUDO_EPOCH;
-                                    std::mem::replace(&mut v.value, Value::Time(date));
-                                }
-                            }
-                            FieldType::DateTime => {
-                                if let Value::U32(ref inner) = v.value {
-                                    let date = *inner + PSEUDO_EPOCH;
-                                    std::mem::replace(&mut v.value, Value::Time(date));
-                                }
-                            }
-                                                       FieldType::LocalDateTime => {
-                                if let Value::U32(ref inner) = v.value {
-                                    let time = *inner + PSEUDO_EPOCH - 3600;
-                                    std::mem::replace(&mut v.value, Value::Time(time));
-                                }
-                            }
-                            FieldType::String | FieldType::LocaltimeIntoDay => {}
-                            FieldType::Uint8
-                            | FieldType::Uint8Z
-                            | FieldType::Uint16
-                            | FieldType::Uint16Z
-                            | FieldType::Uint32
-                            | FieldType::Uint32Z
-                            | FieldType::Sint8 => {
-                                if let Some(s) = scales(v.field_num) {
-                                    v.value.scale(s);
-                                }
-                                if let Some(o) = offsets(v.field_num) {
-                                    v.value.offset(o)
-                                }
-                            }
-                            f => {
-                                if let Value::U8(k) = v.value {
-                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
-                                        std::mem::replace(&mut v.value, Value::Enum(t));
-                                    }
-                                } else if let Value::U16(k) = v.value {
-                                    if let Some(t) = match_custom_field_value(f, usize::from(k)) {
-                                        std::mem::replace(&mut v.value, Value::Enum(t));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if let Some(time_offset) = h.compressed_timestamp() {
-                        let mut timestamp = self.last_timestamp
-                            & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
-                        if time_offset
-                            < (self.last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
-                        {
-                                                        timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
-                        };
 
-                        if let Some(timestamp_field_number) =
-                            match_message_timestamp_field(message_type)
-                        {
-                            unsafe {
-                                std::ptr::write(
-                                    &mut self.field_buffer[valid_fields],
-                                    DataField::new(
-                                        timestamp_field_number,
-                                        Value::Time(timestamp + PSEUDO_EPOCH),
-                                    ),
-                                );
+                // if this is a developer field definition
+                if message_type == MessageType::FieldDescription {
+                    let d = DeveloperFieldDescription::new(self.field_buffer[0..valid_fields].to_vec());
+                    self.developer_fields.push(d);
+                } 
+
+                // this is not a valid message, so there's no more processing to do this loop
+                if message_type == MessageType::None || valid_fields == 0 {
+                    continue;
+                }
+                
+                // if this record is a message that contains developer-defined fields read those too
+                if let Some(dev_field_defs) = &definition.developer_fields {
+                    let mut temp_dev_fields = Vec::new();
+                    for df in dev_field_defs.iter() {
+                        for e in &self.developer_fields {
+                            if e.developer_data_index == 1 {
+                                if let Some(v) = read_next_field(e.fit_base_type, df.size, definition.endianness, &mut self.buf){
+                                    temp_dev_fields.push(DevDataField::new(
+                                        df.developer_data_index,
+                                        df.field_number,
+                                        v
+                                    ));
+                                }
                             }
-                            valid_fields += 1;
                         }
                     }
-                    return Some(Message {
-                        values: self.field_buffer[0..valid_fields].to_vec(),
-                        kind: message_type,
-                        // dev_values: dev_fields,
-                    });
+                    dev_fields = Some(temp_dev_fields);
                 }
+
+                let scales = match_message_scale(message_type);
+                let offsets = match_message_offset(message_type);
+                let fields = match_message_field(message_type);
+                for v in self.field_buffer.iter_mut().take(valid_fields) {
+                    // see if the fields need any further processing
+                    match fields(v.field_num) {
+                        FieldType::None => (),
+                        FieldType::Coordinates => {
+                            if let Value::I32(ref inner) = v.value {
+                                let coord = *inner as f32 * COORD_SEMICIRCLES_CALC;
+                                std::mem::replace(&mut v.value, Value::F32(coord));
+                            }
+                        }
+                        FieldType::Timestamp => {
+                            if let Value::U32(ref inner) = v.value {
+                                // self.last_timestamp = *inner;
+                                let date = *inner + PSEUDO_EPOCH;
+                                std::mem::replace(&mut v.value, Value::Time(date));
+                            }
+                        }
+                        FieldType::DateTime => {
+                            if let Value::U32(ref inner) = v.value {
+                                let date = *inner + PSEUDO_EPOCH;
+                                std::mem::replace(&mut v.value, Value::Time(date));
+                            }
+                        }
+                                                   FieldType::LocalDateTime => {
+                            if let Value::U32(ref inner) = v.value {
+                                let time = *inner + PSEUDO_EPOCH - 3600;
+                                std::mem::replace(&mut v.value, Value::Time(time));
+                            }
+                        }
+                        FieldType::String | FieldType::LocaltimeIntoDay => {}
+                        FieldType::Uint8
+                        | FieldType::Uint8Z
+                        | FieldType::Uint16
+                        | FieldType::Uint16Z
+                        | FieldType::Uint32
+                        | FieldType::Uint32Z
+                        | FieldType::Sint8 => {
+                            if let Some(s) = scales(v.field_num) {
+                                v.value.scale(s);
+                            }
+                            if let Some(o) = offsets(v.field_num) {
+                                v.value.offset(o)
+                            }
+                        }
+                        f => {
+                            if let Value::U8(k) = v.value {
+                                if let Some(t) = match_custom_field_value(f, usize::from(k)) {
+                                    std::mem::replace(&mut v.value, Value::Enum(t));
+                                }
+                            } else if let Value::U16(k) = v.value {
+                                if let Some(t) = match_custom_field_value(f, usize::from(k)) {
+                                    std::mem::replace(&mut v.value, Value::Enum(t));
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if let Some(time_offset) = h.compressed_timestamp() {
+                    let mut timestamp = self.last_timestamp
+                        & COMPRESSED_HEADER_LAST_TIMESTAMP_MASK + u32::from(time_offset);
+                    if time_offset
+                        < (self.last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
+                    {
+                                                    timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
+                    };
+
+                    if let Some(timestamp_field_number) =
+                        match_message_timestamp_field(message_type)
+                    {
+                        unsafe {
+                            std::ptr::write(
+                                &mut self.field_buffer[valid_fields],
+                                DataField::new(
+                                    timestamp_field_number,
+                                    Value::Time(timestamp + PSEUDO_EPOCH),
+                                ),
+                            );
+                        }
+                        valid_fields += 1;
+                    }
+                }
+                
+                return Some(Message {
+                    values: self.field_buffer[0..valid_fields].to_vec(),
+                    kind: message_type,
+                    dev_values: dev_fields,
+                });
             }
         }
     }
 }
 
-//             // if this is a developer field definition
-//             if m == MessageType::FieldDescription {
-//                 let d = DeveloperFieldDescription::new(datafield_buffer[0..valid_fields].to_vec());
-//                 developer_field_descriptions.push(d);
-//             } else {
-//                 // if this record is a message that contains developer-defined fields read those too
-//                 let dev_fields = match &d.developer_fields {
-//                     Some(dev_fields) => dev_fields
-//                         .iter()
-//                         .filter_map(|df| {
-//                             let def = developer_field_descriptions
-//                                 .iter()
-//                                 .find(|e| {
-//                                     e.developer_data_index == df.developer_data_index
-//                                         && e.field_definition_number == df.field_number
-//                                 })
-//                                 .unwrap();
-//                             match read_next_field(
-//                                 def.fit_base_type,
-//                                 df.size,
-//                                 d.endianness,
-//                                 &mut self.buf,
-//                                 false,
-//                             ) {
-//                                 Value::None => None,
-//                                 v => Some(DevDataField::new(
-//                                     df.developer_data_index,
-//                                     df.field_number,
-//                                     v,
-//                                 )),
-//                             }
-//                         })
-//                         .collect(),
-//                     None => Vec::new(),
-//                 };
 
 #[derive(Clone, Debug)]
 pub struct Message {
     pub kind: MessageType,
     pub values: Vec<DataField>,
-    // pub dev_values: Vec<DevDataField>,
+    pub dev_values: Option<Vec<DevDataField>>,
 }
 
 #[derive(Debug)]
@@ -336,7 +332,7 @@ impl DefinitionRecord {
         let global_message_number = read_u16(map, endian);
         let number_of_fields = read_u8(map);
 
-        for i in 0..number_of_fields {
+        for _ in 0..number_of_fields {
             buffer.push(FieldDefinition::new(map));
         }
         let dev_fields: Option<Vec<DeveloperFieldDefinition>> = if dev_fields {
@@ -372,7 +368,7 @@ impl DataField {
         }
     }
     fn default() -> Self {
-        Self::new(0, Value::None)
+        Self::new(0, Value::U8(0))
     }
 }
 #[derive(Clone, Debug)]
@@ -400,7 +396,7 @@ pub enum Value {
     U32(u32),
     I32(i32),
     Enum(&'static str),
-    String(ArrayString<[u8; 32]>),
+    String(String),
     F32(f32),
     F64(f64),
     I64(i64),
@@ -409,7 +405,6 @@ pub enum Value {
     ArrU8(Vec<u8>),
     ArrU16(Vec<u16>),
     ArrU32(Vec<u32>),
-    None,
 }
 impl Value {
     fn scale(&mut self, val: f32) {
@@ -499,13 +494,6 @@ impl FieldDefinition {
             base_type: buf[2] & FIELD_DEFINITION_BASE_NUMBER,
         }
     }
-    fn default() -> Self {
-        Self {
-            definition_number: 0,
-            size: 0,
-            base_type: 0,
-        }
-    }
 }
 
 #[allow(clippy::cognitive_complexity)]
@@ -514,25 +502,21 @@ pub fn read_next_field<R>(
     size: u8,
     endianness: Endianness,
     map: &mut R,
-) -> Value
+) -> Option<Value>
 where
     R: Read + Seek,
 {
-    // if skip {
-    //     skip_bytes(map, size);
-    //     return Value::None;
-    // }
     match base_type {
         0 | 13 => {
             // enum / byte
             if size > 1 {
                 println!("0/13:enum/byte: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 match read_u8(map) {
-                    0xFF => Value::None,
-                    v => Value::U8(v),
+                    0xFF => None,
+                    v => Some(Value::U8(v)),
                 }
             }
         }
@@ -541,11 +525,11 @@ where
             if size > 1 {
                 println!("1 i8: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 match read_i8(map) {
-                    0x7F => Value::None,
-                    v => Value::I8(v),
+                    0x7F => None,
+                    v => Some(Value::I8(v)),
                 }
             }
         }
@@ -554,16 +538,16 @@ where
             if size > 1 {
                 let mut buf: Vec<_> = Vec::with_capacity(size.into());
                 let _ = map.take(size.into()).read_to_end(&mut buf);
-                let c: Vec<u8> = buf.iter().cloned().filter(|x| *x != 0xFF).collect();
-                if c.is_empty() {
-                    Value::None
+                buf.retain(|x| *x != 0xFF);
+                if buf.is_empty() {
+                    None
                 } else {
-                    Value::ArrU8(c)
+                    Some(Value::ArrU8(buf))
                 }
             } else {
                 match read_u8(map) {
-                    0xFF => Value::None,
-                    v => Value::U8(v),
+                    0xFF => None,
+                    v => Some(Value::U8(v)),
                 }
             }
         }
@@ -573,13 +557,13 @@ where
             if number_of_values > 1 {
                 println!("3 i16: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_i16(map, endianness);
                 if val == 0x7FFF {
-                    Value::None
+                    None
                 } else {
-                    Value::I16(val)
+                    Some(Value::I16(val))
                 }
             }
         }
@@ -594,16 +578,16 @@ where
                     })
                     .collect();
                 if c.is_empty() {
-                    Value::None
+                    None
                 } else {
-                    Value::ArrU16(c)
+                    Some(Value::ArrU16(c))
                 }
             } else {
                 let val = read_u16(map, endianness);
                 if val == 0xFFFF {
-                    Value::None
+                    None
                 } else {
-                    Value::U16(val)
+                    Some(Value::U16(val))
                 }
             }
         }
@@ -613,13 +597,13 @@ where
             if number_of_values > 1 {
                 println!("5 i32: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_i32(map, endianness);
                 if val == 0x7F_FFF_FFF {
-                    Value::None
+                    None
                 } else {
-                    Value::I32(val)
+                    Some(Value::I32(val))
                 }
             }
         }
@@ -634,16 +618,16 @@ where
                     })
                     .collect();
                 if c.is_empty() {
-                    Value::None
+                    None
                 } else {
-                    Value::ArrU32(c)
+                    Some(Value::ArrU32(c))
                 }
             } else {
                 let val = read_u32(map, endianness);
                 if val == 0xFFFF_FFFF {
-                    Value::None
+                    None
                 } else {
-                    Value::U32(val)
+                    Some(Value::U32(val))
                 }
             }
         }
@@ -651,13 +635,11 @@ where
             // string
             let mut buf: Vec<_> = Vec::with_capacity(size.into());
             let _ = map.take(size.into()).read_to_end(&mut buf);
-            let buf: Vec<u8> = buf.iter().filter(|b| *b != &0x00).cloned().collect();
-            if let Ok(s) = std::str::from_utf8(&buf) {
-                let mut string = ArrayString::<[_; 32]>::new();
-                string.push_str(s);
-                Value::String(string)
+            buf.retain(|b| *b != 0x00);
+            if let Ok(string) = String::from_utf8(buf) {
+                Some(Value::String(string))
             } else {
-                Value::None
+                None
             }
         }
         8 => {
@@ -666,14 +648,14 @@ where
             if number_of_values > 1 {
                 println!("8 f32: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let uval = read_u32(map, endianness);
                 if uval == 0xFF_FFF_FFF {
-                    Value::None
+                    None
                 } else {
                     let val = f32::from_bits(uval);
-                    Value::F32(val)
+                    Some(Value::F32(val))
                 }
             }
         }
@@ -683,14 +665,14 @@ where
             if number_of_values > 1 {
                 println!("9 f64: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let uval = read_u64(map, endianness);
                 if uval == 0xF_FFF_FFF_FFF_FFF_FFF {
-                    Value::None
+                    None
                 } else {
                     let val = f64::from_bits(uval);
-                    Value::F64(val)
+                    Some(Value::F64(val))
                 }
             }
         }
@@ -699,13 +681,13 @@ where
             if size > 1 {
                 println!("10:uint8z {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_u8(map);
                 if val == 0x00 {
-                    Value::None
+                    None
                 } else {
-                    Value::U8(val)
+                    Some(Value::U8(val))
                 }
             }
         }
@@ -715,13 +697,13 @@ where
             if number_of_values > 1 {
                 println!("11 u16: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_u16(map, endianness);
                 if val == 0x0000 {
-                    Value::None
+                    None
                 } else {
-                    Value::U16(val)
+                    Some(Value::U16(val))
                 }
             }
         }
@@ -731,13 +713,13 @@ where
             if number_of_values > 1 {
                 println!("12 u32: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_u32(map, endianness);
                 if val == 0x0000_0000 {
-                    Value::None
+                    None
                 } else {
-                    Value::U32(val)
+                    Some(Value::U32(val))
                 }
             }
         }
@@ -747,13 +729,13 @@ where
             if number_of_values > 1 {
                 println!("14 i64: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_i64(map, endianness);
                 if val == 0x7_FFF_FFF_FFF_FFF_FFF {
-                    Value::None
+                    None
                 } else {
-                    Value::I64(val)
+                    Some(Value::I64(val))
                 }
             }
         }
@@ -763,13 +745,13 @@ where
             if number_of_values > 1 {
                 println!("15 u64: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_u64(map, endianness);
                 if val == 0xF_FFF_FFF_FFF_FFF_FFF {
-                    Value::None
+                    None
                 } else {
-                    Value::U64(val)
+                    Some(Value::U64(val))
                 }
             }
         }
@@ -779,16 +761,16 @@ where
             if number_of_values > 1 {
                 println!("16 u64: {}", size);
                 skip_bytes(map, size);
-                Value::None
+                None
             } else {
                 let val = read_u64(map, endianness);
                 if val == 0x0_000_000_000_000_000 {
-                    Value::None
+                    None
                 } else {
-                    Value::U64(val)
+                    Some(Value::U64(val))
                 }
             }
         }
-        _ => Value::None,
+        _ => None,
     }
 }
