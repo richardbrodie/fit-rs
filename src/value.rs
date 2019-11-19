@@ -22,7 +22,7 @@ pub enum Value {
     ArrU32(Vec<u32>),
 }
 impl Value {
-    pub fn scale(&mut self, val: f32) {
+    pub(super) fn scale(&mut self, val: f32) {
         match self {
             Value::U8(mut inner) => {
                 let new_inner = f32::from(inner) / val;
@@ -51,7 +51,7 @@ impl Value {
             _ => (),
         }
     }
-    pub fn offset(&mut self, val: i16) {
+    pub(super) fn offset(&mut self, val: i16) {
         match self {
             Value::U8(mut inner) => {
                 let new_inner = i16::from(inner) - val;

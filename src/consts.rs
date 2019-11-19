@@ -13,4 +13,3 @@ pub const FIELD_DEFINITION_BASE_NUMBER: u8 = 0b00_011_111;
 
 pub const COORD_SEMICIRCLES_CALC: f32 = (180f64 / (std::u32::MAX as u64 / 2 + 1) as f64) as f32;
 pub const PSEUDO_EPOCH: u32 = 631_065_600;
-

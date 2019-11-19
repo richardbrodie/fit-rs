@@ -1,32 +1,28 @@
+mod consts;
 mod developer_fields;
 mod io;
 mod value;
-mod consts;
 
+use consts::*;
+use copyless::VecHelper;
+use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use fitsdk::{
     match_custom_field_value, match_message_field, match_message_offset, match_message_scale,
     match_message_timestamp_field, match_messagetype, FieldType, MessageType,
 };
-use memmap::{MmapOptions,Mmap};
+use io::*;
+use memmap::{Mmap, MmapOptions};
 use std::collections::VecDeque;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::{fs::File, path::PathBuf};
-use copyless::VecHelper;
-use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
-use io::*;
-use value::*;
-use consts::*;
-
-type ScaleClosure = dyn std::ops::Fn(usize) -> std::option::Option<f32>;
-type OffsetClosure = dyn std::ops::Fn(usize) -> std::option::Option<i16>;
-type FieldClosure = dyn std::ops::Fn(usize) -> fitsdk::FieldType;
+pub use value::Value;
 
 //////////
 //// Fit
 //////////
 
 pub struct Fit {
-    _file_header: FileHeader,
+    file_header: FileHeader,
     data_len: u64,
     buf: Cursor<Mmap>,
     queue: VecDeque<(u8, DefinitionRecord)>,
@@ -42,14 +38,16 @@ impl Fit {
         let fh = FileHeader::new(&mut buf);
         Self {
             data_len: u64::from(&fh.num_record_bytes + 14),
-            _file_header: fh,
+            file_header: fh,
             buf: buf,
             queue: VecDeque::new(),
             developer_fields: Vec::new(),
             last_timestamp: 0,
         }
     }
-
+    pub fn file_header(&self) -> &FileHeader {
+        &self.file_header
+    }
 }
 impl Iterator for Fit {
     type Item = Message;
@@ -67,7 +65,7 @@ impl Iterator for Fit {
                 // if no definition is found, skip this loop
                 let definition = match self.queue.iter().find(|x| x.0 == h.local_num) {
                     None => continue,
-                    Some((_,def)) => def
+                    Some((_, def)) => def,
                 };
                 let message_type = match_messagetype(definition.global_message_number);
                 let mut dev_fields: Option<Vec<DevDataField>> = None;
@@ -77,13 +75,12 @@ impl Iterator for Fit {
                 for fd in definition.field_definitions.iter() {
                     if message_type == MessageType::None {
                         skip_bytes(&mut self.buf, fd.size);
-                    } else if let Some(data) = read_next_field(
-                            fd.base_type,
-                            fd.size,
-                            definition.endianness,
-                            &mut self.buf,
-                        ){
-                        values.alloc().init(DataField::new(fd.definition_number, data));
+                    } else if let Some(data) =
+                        read_next_field(fd.base_type, fd.size, definition.endianness, &mut self.buf)
+                    {
+                        values
+                            .alloc()
+                            .init(DataField::new(fd.definition_number, data));
                     }
                 }
 
@@ -92,24 +89,29 @@ impl Iterator for Fit {
                     let d = DeveloperFieldDescription::new(values);
                     self.developer_fields.push(d);
                     continue;
-                } 
+                }
 
                 // this is not a valid message, so there's no more processing to do this loop
                 if message_type == MessageType::None || values.is_empty() {
                     continue;
                 }
-                
+
                 // if this record is a message that contains developer-defined fields read those too
                 if let Some(dev_field_defs) = &definition.developer_fields {
                     let mut temp_dev_fields = Vec::new();
                     for df in dev_field_defs.iter() {
                         for e in &self.developer_fields {
                             if e.developer_data_index == 1 {
-                                if let Some(v) = read_next_field(e.fit_base_type, df.size, definition.endianness, &mut self.buf){
+                                if let Some(v) = read_next_field(
+                                    e.fit_base_type,
+                                    df.size,
+                                    definition.endianness,
+                                    &mut self.buf,
+                                ) {
                                     temp_dev_fields.push(DevDataField::new(
                                         df.developer_data_index,
                                         df.field_number,
-                                        v
+                                        v,
                                     ));
                                 }
                             }
@@ -125,7 +127,7 @@ impl Iterator for Fit {
                 for v in &mut values {
                     process_value(v, fields, scales, offsets);
                 }
-                
+
                 // some FIT files use a compressed timestamp to save a little more space
                 if let Some(time_offset) = h.compressed_timestamp() {
                     let mut timestamp = self.last_timestamp
@@ -133,21 +135,19 @@ impl Iterator for Fit {
                     if time_offset
                         < (self.last_timestamp as u8 & COMPRESSED_HEADER_TIME_OFFSET_MASK)
                     {
-                                                    timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
+                        timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
                     };
 
                     if let Some(timestamp_field_number) =
                         match_message_timestamp_field(message_type)
                     {
-                        values.alloc().init(
-                                DataField::new(
-                                    timestamp_field_number,
-                                    Value::Time(timestamp + PSEUDO_EPOCH),
-                                )
-                            );
+                        values.alloc().init(DataField::new(
+                            timestamp_field_number,
+                            Value::Time(timestamp + PSEUDO_EPOCH),
+                        ));
                     }
                 }
-                
+
                 // if any values were invalid we have a vec that's now too long
                 values.shrink_to_fit();
                 return Some(Message {
@@ -160,9 +160,8 @@ impl Iterator for Fit {
     }
 }
 
-
 #[allow(clippy::cognitive_complexity)]
-pub fn read_next_field<R>(
+fn read_next_field<R>(
     base_type: u8,
     size: u8,
     endianness: Endianness,
@@ -440,7 +439,12 @@ where
     }
 }
 
-fn process_value(v: &mut DataField, fields: &FieldClosure, scales: &ScaleClosure, offsets: &OffsetClosure){
+fn process_value(
+    v: &mut DataField,
+    fields: &fitsdk::MatchFieldTypeFn,
+    scales: &fitsdk::MatchScaleFn,
+    offsets: &fitsdk::MatchOffsetFn,
+) {
     match fields(v.field_num) {
         FieldType::None => (),
         FieldType::Coordinates => {
@@ -462,7 +466,7 @@ fn process_value(v: &mut DataField, fields: &FieldClosure, scales: &ScaleClosure
                 std::mem::replace(&mut v.value, Value::Time(date));
             }
         }
-                                   FieldType::LocalDateTime => {
+        FieldType::LocalDateTime => {
             if let Value::U32(ref inner) = v.value {
                 let time = *inner + PSEUDO_EPOCH - 3600;
                 std::mem::replace(&mut v.value, Value::Time(time));
@@ -513,10 +517,10 @@ pub struct Message {
 //////////
 
 #[derive(Debug)]
-struct FileHeader {
-    filesize: u8,
-    protocol: u8,
-    profile_version: u16,
+pub struct FileHeader {
+    pub filesize: u8,
+    pub protocol: u8,
+    pub profile_version: u16,
     num_record_bytes: u32,
     fileext: bool,
     crc: u16,
@@ -596,10 +600,7 @@ struct DefinitionRecord {
     developer_fields: Option<Vec<DeveloperFieldDefinition>>,
 }
 impl DefinitionRecord {
-    fn new<R>(
-        map: &mut R,
-        dev_fields: bool,
-    ) -> Self
+    fn new<R>(map: &mut R, dev_fields: bool) -> Self
     where
         R: Read + Seek,
     {
@@ -674,19 +675,18 @@ impl DevDataField {
     }
 }
 
-
 //////////
 //// FieldDefinition
 //////////
 
 #[derive(Debug, Copy, Clone)]
-pub struct FieldDefinition {
-    pub definition_number: usize,
-    pub size: u8,
-    pub base_type: u8,
+struct FieldDefinition {
+    definition_number: usize,
+    size: u8,
+    base_type: u8,
 }
 impl FieldDefinition {
-    pub fn new<R>(map: &mut R) -> Self
+    fn new<R>(map: &mut R) -> Self
     where
         R: Read,
     {
@@ -699,4 +699,3 @@ impl FieldDefinition {
         }
     }
 }
-

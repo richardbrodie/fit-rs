@@ -10,8 +10,10 @@ pub struct DeveloperFieldDefinition {
 }
 impl DeveloperFieldDefinition {
     pub fn new<R>(map: &mut R) -> Self
-    where R: Read {
-        let mut buf: [u8;3] = [0;3];
+    where
+        R: Read,
+    {
+        let mut buf: [u8; 3] = [0; 3];
         let _ = map.read(&mut buf);
         Self {
             field_number: buf[0].into(),
