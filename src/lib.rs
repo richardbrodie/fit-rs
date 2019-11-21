@@ -7,7 +7,7 @@ use consts::*;
 use copyless::VecHelper;
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use fitsdk::{
-    match_custom_field_value, match_message_field, match_message_offset, match_message_scale,
+    match_predefined_field_value, match_message_field, match_message_offset, match_message_scale,
     match_message_timestamp_field, match_messagetype, FieldType, MessageType,
 };
 use io::*;
@@ -489,11 +489,11 @@ fn process_value(
         }
         f => {
             if let Value::U8(k) = v.value {
-                if let Some(t) = match_custom_field_value(f, usize::from(k)) {
+                if let Some(t) = match_predefined_field_value(f, usize::from(k)) {
                     std::mem::replace(&mut v.value, Value::Enum(t));
                 }
             } else if let Value::U16(k) = v.value {
-                if let Some(t) = match_custom_field_value(f, usize::from(k)) {
+                if let Some(t) = match_predefined_field_value(f, usize::from(k)) {
                     std::mem::replace(&mut v.value, Value::Enum(t));
                 }
             }
