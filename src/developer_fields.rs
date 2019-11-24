@@ -2,7 +2,7 @@ use super::{DataField, Value};
 use std::collections::HashMap;
 use std::io::Read;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct DeveloperFieldDefinition {
     pub field_number: u8,
     pub size: u8,

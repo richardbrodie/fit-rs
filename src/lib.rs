@@ -7,8 +7,8 @@ use consts::*;
 use copyless::VecHelper;
 use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
 use fitsdk::{
-    match_predefined_field_value, match_message_field, match_message_offset, match_message_scale,
-    match_message_timestamp_field, match_messagetype, FieldType, MessageType,
+    match_message_field, match_message_offset, match_message_scale, match_message_timestamp_field,
+    match_messagetype, match_predefined_field_value, FieldType, MessageType,
 };
 use io::*;
 use memmap::{Mmap, MmapOptions};
@@ -161,12 +161,7 @@ impl Iterator for Fit {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn read_next_field<R>(
-    base_type: u8,
-    size: u8,
-    endianness: Endianness,
-    map: &mut R,
-) -> Option<Value>
+fn read_next_field<R>(base_type: u8, size: u8, endianness: Endianness, map: &mut R) -> Option<Value>
 where
     R: Read + Seek,
 {
@@ -516,7 +511,7 @@ pub struct Message {
 //// FileHeader
 //////////
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct FileHeader {
     pub filesize: u8,
     pub protocol: u8,
@@ -548,7 +543,7 @@ impl FileHeader {
 //// HeaderByte
 //////////
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct HeaderByte {
     compressed_header: bool,
     definition: bool,
@@ -592,7 +587,7 @@ impl HeaderByte {
 //////////
 //// DefinitionRecord
 //////////
-
+#[derive(Clone, Debug, PartialEq)]
 struct DefinitionRecord {
     endianness: Endianness,
     global_message_number: u16,
@@ -641,7 +636,7 @@ impl DefinitionRecord {
 //// DataField
 //////////
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DataField {
     pub field_num: usize,
     pub value: Value,
@@ -659,7 +654,7 @@ impl DataField {
 //// DevDataField
 //////////
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DevDataField {
     pub data_index: u8,
     pub field_num: u8,
@@ -679,7 +674,7 @@ impl DevDataField {
 //// FieldDefinition
 //////////
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 struct FieldDefinition {
     definition_number: usize,
     size: u8,
@@ -692,10 +687,144 @@ impl FieldDefinition {
     {
         let mut buf: [u8; 3] = [0; 3];
         let _ = map.read(&mut buf);
+        println!("{:?}", buf);
         Self {
             definition_number: buf[0].into(),
             size: buf[1],
             base_type: buf[2] & FIELD_DEFINITION_BASE_NUMBER,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn it_reads_file_header() {
+        let a = [14, 16, 116, 6, 51, 92, 1, 0, 46, 70, 73, 84, 213, 14];
+        let mut c = Cursor::new(a);
+        let fh = FileHeader::new(&mut c);
+        assert_eq!(
+            fh,
+            FileHeader {
+                filesize: 14,
+                protocol: 16,
+                profile_version: 1652,
+                num_record_bytes: 89139,
+                fileext: true,
+                crc: 3797,
+            }
+        );
+    }
+
+    #[test]
+    fn it_reads_header_byte_compressed_header() {
+        let a = [208];
+        let mut c = Cursor::new(a);
+        let h = HeaderByte::new(&mut c);
+        assert_eq!(
+            h,
+            HeaderByte {
+                compressed_header: true,
+                definition: false,
+                dev_fields: false,
+                local_num: 2,
+                time_offset: Some(16)
+            }
+        );
+    }
+
+    #[test]
+    fn it_reads_header_byte_normal() {
+        let a = [14];
+        let mut c = Cursor::new(a);
+        let h = HeaderByte::new(&mut c);
+        assert_eq!(
+            h,
+            HeaderByte {
+                compressed_header: false,
+                definition: false,
+                dev_fields: false,
+                local_num: 14,
+                time_offset: None
+            }
+        );
+    }
+
+    #[test]
+    fn it_reads_definition_record() {
+        let a = vec![
+            0, 0, 0, 0, 7, 3, 4, 140, 4, 4, 134, 7, 4, 134, 1, 2, 132, 2, 2, 132, 5, 2, 132, 0, 1,
+            0,
+        ];
+        let mut c = Cursor::new(a);
+        let def = DefinitionRecord::new(&mut c, false);
+        let comp = DefinitionRecord {
+            endianness: Endianness::Little,
+            global_message_number: 0,
+            field_definitions: vec![
+                FieldDefinition {
+                    definition_number: 3,
+                    size: 4,
+                    base_type: 12,
+                },
+                FieldDefinition {
+                    definition_number: 4,
+                    size: 4,
+                    base_type: 6,
+                },
+                FieldDefinition {
+                    definition_number: 7,
+                    size: 4,
+                    base_type: 6,
+                },
+                FieldDefinition {
+                    definition_number: 1,
+                    size: 2,
+                    base_type: 4,
+                },
+                FieldDefinition {
+                    definition_number: 2,
+                    size: 2,
+                    base_type: 4,
+                },
+                FieldDefinition {
+                    definition_number: 5,
+                    size: 2,
+                    base_type: 4,
+                },
+                FieldDefinition {
+                    definition_number: 0,
+                    size: 1,
+                    base_type: 0,
+                },
+            ],
+            developer_fields: None,
+        };
+        assert_eq!(def, comp);
+    }
+
+    #[test]
+    fn it_reads_field_definition() {
+        let fda = FieldDefinition::new(&mut Cursor::new([254, 2, 132]));
+        assert_eq!(
+            fda,
+            FieldDefinition {
+                definition_number: 254,
+                size: 2,
+                base_type: 4
+            }
+        );
+        let fdb = FieldDefinition::new(&mut Cursor::new([102, 4, 2]));
+        assert_eq!(
+            fdb,
+            FieldDefinition {
+                definition_number: 102,
+                size: 4,
+                base_type: 2
+            }
+        );
     }
 }

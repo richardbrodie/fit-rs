@@ -2,7 +2,7 @@
 //// Value
 //////////
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     U8(u8),
     I8(i8),

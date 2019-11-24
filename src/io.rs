@@ -1,6 +1,6 @@
 use std::io::{Read, Seek, SeekFrom};
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone,Debug, PartialEq)]
 pub enum Endianness {
     Little,
     Big,
@@ -119,4 +119,108 @@ where
     R: Seek,
 {
     map.seek(SeekFrom::Current(s.into())).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn it_reads_u8() {
+        let a = [42];
+        assert_eq!(read_u8(&mut a.as_ref()), 42);
+    }
+    #[test]
+    fn it_reads_u16_le() {
+        let endianness = Endianness::Little;
+        let a = [42, 151];
+        assert_eq!(read_u16(&mut a.as_ref(), endianness), 38698);
+    }
+    #[test]
+    fn it_reads_u16_be() {
+        let endianness = Endianness::Big;
+        let a = [42, 151];
+        assert_eq!(read_u16(&mut a.as_ref(), endianness), 10903);
+    }
+    #[test]
+    fn it_reads_u32_le() {
+        let endianness = Endianness::Little;
+        let a = [42, 151, 138, 217];
+        assert_eq!(read_u32(&mut a.as_ref(), endianness), 3649738538);
+    }
+    #[test]
+    fn it_reads_u32_be() {
+        let endianness = Endianness::Big;
+        let a = [42, 151, 138, 217];
+        assert_eq!(read_u32(&mut a.as_ref(), endianness), 714574553);
+    }
+    #[test]
+    fn it_reads_u64_le() {
+        let endianness = Endianness::Little;
+        let a = [42, 151, 138, 217, 59, 205, 235, 102];
+        assert_eq!(read_u64(&mut a.as_ref(), endianness), 7416246868332156714);
+    }
+    #[test]
+    fn it_reads_u64_be() {
+        let endianness = Endianness::Big;
+        let a = [42, 151, 138, 217, 59, 205, 235, 102];
+        assert_eq!(read_u64(&mut a.as_ref(), endianness), 3069074336692169574);
+    }
+    #[test]
+    fn it_reads_i8() {
+        let a = [234];
+        assert_eq!(read_i8(&mut a.as_ref()), -22);
+    }
+    #[test]
+    fn it_reads_i16_le() {
+        let endianness = Endianness::Little;
+        let a = [234, 151];
+        assert_eq!(read_i16(&mut a.as_ref(), endianness), -26646);
+    }
+    #[test]
+    fn it_reads_i16_be() {
+        let endianness = Endianness::Big;
+        let a = [234, 151];
+        assert_eq!(read_i16(&mut a.as_ref(), endianness), -5481);
+    }
+    #[test]
+    fn it_reads_i32_le() {
+        let endianness = Endianness::Little;
+        let a = [234, 151, 138, 217];
+        assert_eq!(read_i32(&mut a.as_ref(), endianness), -645228566);
+    }
+    #[test]
+    fn it_reads_i32_be() {
+        let endianness = Endianness::Big;
+        let a = [234, 151, 138, 217];
+        assert_eq!(read_i32(&mut a.as_ref(), endianness), -359167271);
+    }
+    #[test]
+    fn it_reads_i64_le() {
+        let endianness = Endianness::Little;
+        let a = [234, 151, 138, 217, 59, 205, 235, 102];
+        assert_eq!(read_i64(&mut a.as_ref(), endianness), 7416246868332156906);
+    }
+    #[test]
+    fn it_reads_i64_be() {
+        let endianness = Endianness::Big;
+        let a = [234, 151, 138, 217, 59, 205, 235, 102];
+        assert_eq!(read_i64(&mut a.as_ref(), endianness), -1542611681735218330);
+    }
+    #[test]
+    fn it_consumes_bytes() {
+        let endianness = Endianness::Little;
+        let a = [234, 151, 138, 217, 59];
+        let mut c = Cursor::new(a);
+        let _ = read_u32(&mut c, endianness);
+        assert_eq!(read_u8(&mut c), 59);
+    }
+    #[test]
+    fn it_skips_bytes() {
+        let a = [234, 151, 138, 217, 59, 205, 235, 102];
+        let mut c = Cursor::new(a);
+        skip_bytes(&mut c, 5);
+        assert_eq!(read_u8(&mut c), 205);
+    }
 }
