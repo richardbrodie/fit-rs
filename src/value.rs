@@ -21,6 +21,7 @@ pub enum Value {
     ArrU16(Vec<u16>),
     ArrU32(Vec<u32>),
 }
+#[allow(unused_must_use)]
 impl Value {
     pub(super) fn scale(&mut self, val: f32) {
         match self {

@@ -1,20 +1,27 @@
 mod consts;
 mod developer_fields;
 mod io;
+mod types;
 mod value;
 
 use consts::*;
 use copyless::VecHelper;
-use developer_fields::{DeveloperFieldDefinition, DeveloperFieldDescription};
+use developer_fields::DeveloperFieldDescription;
 use fitsdk::{
-    match_message_field, match_message_offset, match_message_scale, match_message_timestamp_field,
-    match_messagetype, match_predefined_field_value, FieldType, MessageType,
+    get_field_offset_fn, get_field_scale_fn, get_field_string_value_fn, get_field_type_fn,
+    get_message_timestamp_field, get_message_type, FieldType, MessageType,
 };
 use io::*;
 use memmap::{Mmap, MmapOptions};
 use std::collections::VecDeque;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::{fs::File, path::PathBuf};
+use types::data_field::DataField;
+use types::definition_record::DefinitionRecord;
+use types::dev_data_field::DevDataField;
+use types::file_header::FileHeader;
+use types::header_byte::HeaderByte;
+use types::message::Message;
 pub use value::Value;
 
 //////////
@@ -39,7 +46,7 @@ impl Fit {
         Self {
             data_len: u64::from(&fh.num_record_bytes + 14),
             file_header: fh,
-            buf: buf,
+            buf,
             queue: VecDeque::new(),
             developer_fields: Vec::new(),
             last_timestamp: 0,
@@ -67,7 +74,7 @@ impl Iterator for Fit {
                     None => continue,
                     Some((_, def)) => def,
                 };
-                let message_type = match_messagetype(definition.global_message_number);
+                let message_type = get_message_type(definition.global_message_number);
                 let mut dev_fields: Option<Vec<DevDataField>> = None;
                 let mut values = Vec::with_capacity(definition.field_definitions.len());
 
@@ -76,7 +83,7 @@ impl Iterator for Fit {
                     if message_type == MessageType::None {
                         skip_bytes(&mut self.buf, fd.size);
                     } else if let Some(data) =
-                        read_next_field(fd.base_type, fd.size, definition.endianness, &mut self.buf)
+                        read_next_field(fd.size, fd.base_type, definition.endianness, &mut self.buf)
                     {
                         values
                             .alloc()
@@ -121,9 +128,9 @@ impl Iterator for Fit {
                 }
 
                 // check each value in case the raw value needs further processing
-                let scales = match_message_scale(message_type);
-                let offsets = match_message_offset(message_type);
-                let fields = match_message_field(message_type);
+                let scales = get_field_scale_fn(message_type);
+                let offsets = get_field_offset_fn(message_type);
+                let fields = get_field_type_fn(message_type);
                 for v in &mut values {
                     process_value(v, fields, scales, offsets);
                 }
@@ -138,8 +145,7 @@ impl Iterator for Fit {
                         timestamp += COMPRESSED_HEADER_TIME_OFFSET_ROLLOVER
                     };
 
-                    if let Some(timestamp_field_number) =
-                        match_message_timestamp_field(message_type)
+                    if let Some(timestamp_field_number) = get_message_timestamp_field(message_type)
                     {
                         values.alloc().init(DataField::new(
                             timestamp_field_number,
@@ -151,7 +157,7 @@ impl Iterator for Fit {
                 // if any values were invalid we have a vec that's now too long
                 values.shrink_to_fit();
                 return Some(Message {
-                    values: values,
+                    values,
                     kind: message_type,
                     dev_values: dev_fields,
                 });
@@ -161,7 +167,7 @@ impl Iterator for Fit {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn read_next_field<R>(base_type: u8, size: u8, endianness: Endianness, map: &mut R) -> Option<Value>
+fn read_next_field<R>(size: u8, base_type: u8, endianness: Endianness, map: &mut R) -> Option<Value>
 where
     R: Read + Seek,
 {
@@ -434,11 +440,12 @@ where
     }
 }
 
+#[allow(unused_must_use)]
 fn process_value(
     v: &mut DataField,
-    fields: &fitsdk::MatchFieldTypeFn,
-    scales: &fitsdk::MatchScaleFn,
-    offsets: &fitsdk::MatchOffsetFn,
+    fields: fitsdk::MatchFieldTypeFn,
+    scales: fitsdk::MatchScaleFn,
+    offsets: fitsdk::MatchOffsetFn,
 ) {
     match fields(v.field_num) {
         FieldType::None => (),
@@ -484,220 +491,22 @@ fn process_value(
         }
         f => {
             if let Value::U8(k) = v.value {
-                if let Some(t) = match_predefined_field_value(f, usize::from(k)) {
+                if let Some(t) = get_field_string_value_fn(f, usize::from(k)) {
                     std::mem::replace(&mut v.value, Value::Enum(t));
                 }
             } else if let Value::U16(k) = v.value {
-                if let Some(t) = match_predefined_field_value(f, usize::from(k)) {
+                if let Some(t) = get_field_string_value_fn(f, usize::from(k)) {
                     std::mem::replace(&mut v.value, Value::Enum(t));
                 }
             }
-        }
-    }
-}
-
-//////////
-//// Message
-//////////
-
-#[derive(Clone, Debug)]
-pub struct Message {
-    pub kind: MessageType,
-    pub values: Vec<DataField>,
-    pub dev_values: Option<Vec<DevDataField>>,
-}
-
-//////////
-//// FileHeader
-//////////
-
-#[derive(Debug, PartialEq)]
-pub struct FileHeader {
-    pub filesize: u8,
-    pub protocol: u8,
-    pub profile_version: u16,
-    num_record_bytes: u32,
-    fileext: bool,
-    crc: u16,
-}
-impl FileHeader {
-    fn new<R>(map: &mut R) -> Self
-    where
-        R: Read,
-    {
-        Self {
-            filesize: read_u8(map),
-            protocol: read_u8(map),
-            profile_version: read_u16(map, Endianness::Little),
-            num_record_bytes: read_u32(map, Endianness::Little),
-            fileext: {
-                let buf = arr4(map);
-                &buf == b".FIT"
-            },
-            crc: read_u16(map, Endianness::Little),
-        }
-    }
-}
-
-//////////
-//// HeaderByte
-//////////
-
-#[derive(Debug, PartialEq)]
-struct HeaderByte {
-    compressed_header: bool,
-    definition: bool,
-    dev_fields: bool,
-    local_num: u8,
-    time_offset: Option<u8>,
-}
-impl HeaderByte {
-    fn new<R>(map: &mut R) -> Self
-    where
-        R: Read,
-    {
-        let b = read_u8(map);
-        if (b & COMPRESSED_HEADER_MASK) == COMPRESSED_HEADER_MASK {
-            Self {
-                compressed_header: true,
-                definition: false,
-                dev_fields: false,
-                local_num: (b & COMPRESSED_HEADER_LOCAL_MESSAGE_NUMBER_MASK) >> 5,
-                time_offset: Some(b & COMPRESSED_HEADER_TIME_OFFSET_MASK),
-            }
-        } else {
-            Self {
-                compressed_header: false,
-                definition: (b & DEFINITION_HEADER_MASK) == DEFINITION_HEADER_MASK,
-                dev_fields: (b & DEVELOPER_FIELDS_MASK) == DEVELOPER_FIELDS_MASK,
-                local_num: b & LOCAL_MESSAGE_NUMBER_MASK,
-                time_offset: None,
-            }
-        }
-    }
-    fn compressed_timestamp(self) -> Option<u8> {
-        if self.compressed_header {
-            return self.time_offset;
-        } else {
-            return None;
-        }
-    }
-}
-
-//////////
-//// DefinitionRecord
-//////////
-#[derive(Clone, Debug, PartialEq)]
-struct DefinitionRecord {
-    endianness: Endianness,
-    global_message_number: u16,
-    field_definitions: Vec<FieldDefinition>,
-    developer_fields: Option<Vec<DeveloperFieldDefinition>>,
-}
-impl DefinitionRecord {
-    fn new<R>(map: &mut R, dev_fields: bool) -> Self
-    where
-        R: Read + Seek,
-    {
-        skip_bytes(map, 1);
-        let mut buffer: Vec<FieldDefinition> = Vec::new();
-        let endian = match read_u8(map) {
-            1 => Endianness::Big,
-            0 => Endianness::Little,
-            _ => panic!("unexpected endian byte"),
-        };
-        let global_message_number = read_u16(map, endian);
-        let number_of_fields = read_u8(map);
-
-        for _ in 0..number_of_fields {
-            buffer.push(FieldDefinition::new(map));
-        }
-        let dev_fields: Option<Vec<DeveloperFieldDefinition>> = if dev_fields {
-            let number_of_fields = read_u8(map);
-            Some(
-                (0..number_of_fields)
-                    .map(|_| DeveloperFieldDefinition::new(map))
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        DefinitionRecord {
-            endianness: endian,
-            global_message_number,
-            field_definitions: buffer,
-            developer_fields: dev_fields,
-        }
-    }
-}
-
-//////////
-//// DataField
-//////////
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DataField {
-    pub field_num: usize,
-    pub value: Value,
-}
-impl DataField {
-    fn new(fnum: usize, v: Value) -> Self {
-        Self {
-            field_num: fnum,
-            value: v,
-        }
-    }
-}
-
-//////////
-//// DevDataField
-//////////
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DevDataField {
-    pub data_index: u8,
-    pub field_num: u8,
-    pub value: Value,
-}
-impl DevDataField {
-    fn new(ddi: u8, fnum: u8, v: Value) -> Self {
-        Self {
-            data_index: ddi,
-            field_num: fnum,
-            value: v,
-        }
-    }
-}
-
-//////////
-//// FieldDefinition
-//////////
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-struct FieldDefinition {
-    definition_number: usize,
-    size: u8,
-    base_type: u8,
-}
-impl FieldDefinition {
-    fn new<R>(map: &mut R) -> Self
-    where
-        R: Read,
-    {
-        let mut buf: [u8; 3] = [0; 3];
-        let _ = map.read(&mut buf);
-        println!("{:?}", buf);
-        Self {
-            definition_number: buf[0].into(),
-            size: buf[1],
-            base_type: buf[2] & FIELD_DEFINITION_BASE_NUMBER,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::types::field_definition::FieldDefinition;
+
     use super::*;
     use std::io::Cursor;
 

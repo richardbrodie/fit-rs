@@ -10,17 +10,11 @@ repository = "https://github.com/richardbrodie/fit-rs"
 exclude = ["data/*"]
 
 [dependencies]
-memmap = "^0.7.0"
-copyless = "^0.1.4"
-fitsdk = "^0.1.0"
+memmap = "^0.7"
+copyless = "^0.1"
+fitsdk = {path = "../fitsdk-rs"}
 
-#[dev-dependencies]
-#criterion = "^0.3.0"
+[[bin]]
+name = "test_std"
+path = "bin/test_std.rs"
 
-#[[bin]]
-#name = "test_std"
-#path = "bin/test_std.rs"
-
-#[[bench]]
-#name = "bench_read_file"
-#harness = false

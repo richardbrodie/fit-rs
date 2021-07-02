@@ -1,6 +1,8 @@
-use super::{DataField, Value};
 use std::collections::HashMap;
 use std::io::Read;
+
+use crate::types::data_field::DataField;
+use crate::Value;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct DeveloperFieldDefinition {
